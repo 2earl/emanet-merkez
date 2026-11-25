@@ -1,0 +1,749 @@
+import { Hono } from 'hono';
+import {
+  SESSION_ABSOLUTE_SECONDS,
+  SIGNIN_TTL_SECONDS,
+  SignInError,
+  clientMetadata,
+  createWebSession,
+  currentSession,
+  endWebSession,
+  hasFreshSecondFactor,
+  finishSignIn,
+  startSignIn,
+} from './auth';
+import {
+  PARTNER_KINDS,
+  can,
+  core,
+  staff,
+  type AgentRow,
+  type NewField,
+  type PartnerKind,
+  type ReviewItem,
+  type Settings,
+} from './core';
+import { parseLira, parsePayoutRule, parsePriceList, parseSetting } from './forms';
+import {
+  SECURITY_HEADERS,
+  SESSION_COOKIE,
+  SIGNIN_COOKIE,
+  isSameOrigin,
+  readCookie,
+  safeReturnTo,
+  setCookie,
+  underRateLimit,
+  type AppContext,
+  type AppEnv,
+} from './http';
+import {
+  DEFAULT_LOCALE,
+  LOCALE_COOKIE,
+  LOCALE_COOKIE_MAX_AGE,
+  isLocale,
+  localizeHtml,
+  pickLocale,
+  withLocale,
+} from './i18n';
+import * as pages from './pages';
+
+/** Emanet Merkez: the 2earl staff console (emanet-core docs/DESIGN.md §7). */
+
+const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+
+/** What a person reads for each core error code. */
+const ERROR_TEXT: Record<string, string> = {
+  not_found: 'It isn’t there any more. Someone may have dealt with it already.',
+  missing_legal_name: 'Enter the legal name.',
+  invalid_vkn: 'The tax number has 10 digits (11 for a person).',
+  invalid_reconfirm_days: 'Re-confirming must be every 1 to 90 days.',
+  partner_exists: 'This login organization is already a partner.',
+  invalid_price_list: 'The price list isn’t valid.',
+  invalid_key: 'The key uses a to z, 0 to 9 and _, starting with a letter.',
+  reserved_key: 'This key is one of Emanet’s own fields.',
+  field_exists: 'This partner already has a field with this key.',
+  missing_label: 'Enter both labels.',
+  invalid_enum_values: 'Enter the allowed values, separated by commas.',
+  enum_values_without_enum: 'Allowed values are only for “one of a list”.',
+  invalid_setting: 'That value isn’t allowed.',
+  invalid_payout_rule: 'The payout rule isn’t valid.',
+  case_not_pending: 'This case isn’t waiting for a review any more.',
+  invalid_vin: 'The chassis number must be 17 letters and digits, without I, O or Q.',
+  invalid_reason: 'Enter a reason of at most 200 characters.',
+  duplicate_case: 'The partner already has an open case on that vehicle. Reject this one.',
+  no_active_case: 'No active case on this vehicle any more.',
+  no_payout_rule: 'Set the agents’ payout rule in Settings first.',
+  missing_evidence: 'Evidence is missing.',
+  nothing_to_invoice: 'Nothing to invoice for this partner.',
+  invalid_amount: 'Enter an amount in lira.',
+  invalid_value_date: 'Enter the value date.',
+  missing_bank_ref: 'Enter the bank reference.',
+  invoice_not_open: 'This invoice is already paid or cancelled.',
+  duplicate_bank_ref: 'This bank reference is already recorded.',
+  payout_not_ready: 'This payout can’t be ordered now.',
+  payout_not_approved: 'This payout isn’t approved yet.',
+  second_approver_required: 'A second admin, not you, must approve this payout.',
+  conflict_retry: 'Someone changed this at the same moment. Try again.',
+};
+/** The core's detail says which part was wrong; only where it helps the reader. */
+const WITH_DETAIL = new Set(['missing_evidence', 'invalid_price_list', 'invalid_payout_rule']);
+const errorText = (error: string, detail?: string) =>
+  `${ERROR_TEXT[error] ?? 'That didn’t work.'}${detail && WITH_DETAIL.has(error) ? ` (${detail})` : ''}`;
+
+const DONE: Record<string, string> = {
+  accepted: 'Accepted. Agents can look for the vehicle now.',
+  rejected: 'Rejected. The partner is told why.',
+  delivered: 'Delivered. The partners are told, and the agent’s payout is created.',
+  saved: 'Saved.',
+  activated: 'Activated. Its people can use Emanet Kurumsal now.',
+  suspended: 'Suspended.',
+  invoiced: 'Invoice issued. Send it through the e-invoice provider and record its number.',
+  received: 'Payment recorded.',
+  approved: 'Payout approved. Send it from the bank, then mark it as sent.',
+  waiting: 'Payout ordered. A second admin must approve it.',
+  sent: 'Marked as sent.',
+};
+const done = (c: AppContext) => DONE[c.req.query('done') ?? ''] ?? null;
+
+const SECTIONS = ['/reviews', '/partners', '/agents', '/money', '/settings'];
+
+export function createApp(now: () => number) {
+  const app = new Hono<AppEnv>();
+
+  // Language: ?lang= (remembered), the cookie, then the browser's.
+  app.use('*', async (c: AppContext, next) => {
+    const chosen = c.req.query('lang');
+    const locale = pickLocale({
+      query: chosen,
+      cookie: readCookie(c.req.header('Cookie'), LOCALE_COOKIE),
+      acceptLanguage: c.req.header('Accept-Language'),
+    });
+    c.set('locale', locale);
+    await withLocale({ locale, url: new URL(c.req.url) }, () => next());
+    if (isLocale(chosen) && c.req.method === 'GET') {
+      setCookie(c, LOCALE_COOKIE, chosen, LOCALE_COOKIE_MAX_AGE);
+    }
+    c.header('Content-Language', locale);
+    c.header('Vary', 'Accept-Language, Cookie', { append: true });
+    if (locale === DEFAULT_LOCALE) return;
+    if (!(c.res.headers.get('Content-Type') ?? '').startsWith('text/html')) return;
+    const page = await c.res.text();
+    const headers = new Headers(c.res.headers);
+    headers.delete('Content-Length');
+    c.res = new Response(
+      localizeHtml(page, locale).replace('<html lang="en">', `<html lang="${locale}">`),
+      { status: c.res.status, headers },
+    );
+  });
+
+  app.use('*', async (c: AppContext, next) => {
+    c.set('now', now());
+    c.set(
+      'session',
+      await currentSession(c.env, c.get('now'), readCookie(c.req.header('Cookie'), SESSION_COOKIE)),
+    );
+    if (c.req.method === 'POST' && !isSameOrigin(c)) {
+      return c.html(
+        pages.problem(
+          { signedIn: false },
+          'Not allowed',
+          'This form must be sent from Emanet Merkez.',
+        ),
+        403,
+      );
+    }
+    await next();
+    c.res = new Response(c.res.body, c.res);
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) c.res.headers.set(name, value);
+    if (!c.res.headers.has('Cache-Control')) c.res.headers.set('Cache-Control', 'no-store');
+  });
+
+  const nav = (c: AppContext): pages.Nav => {
+    const role = c.get('role') as AppEnv['Variables']['role'] | undefined;
+    return role ? { signedIn: true, role } : { signedIn: c.get('session') !== null };
+  };
+
+  /**
+   * Every staff page: a session signed in with a second factor, and a staff role in login, read
+   * live on every request, so a removed staff member loses access at once.
+   */
+  const staffGate = async (c: AppContext, next: () => Promise<void>) => {
+    const session = c.get('session');
+    const back = encodeURIComponent(c.req.method === 'GET' ? c.req.path : '/');
+    if (!session) return c.redirect(`/signin?return=${back}`, c.req.method === 'GET' ? 302 : 303);
+    if (session.aal2At === null) {
+      return c.redirect(
+        `/signin?second_factor=1&return=${back}`,
+        c.req.method === 'GET' ? 302 : 303,
+      );
+    }
+    const role = await staff(c.env).roleOf(session.uid);
+    if (!role) {
+      return c.html(
+        pages.problem(
+          { signedIn: true },
+          'Staff only',
+          'Your 2earl account isn’t staff. Emanet Merkez is only for 2earl’s own team.',
+        ),
+        403,
+      );
+    }
+    c.set('role', role);
+    await next();
+    return undefined;
+  };
+  for (const section of SECTIONS) {
+    app.use(section, staffGate);
+    app.use(`${section}/*`, staffGate);
+  }
+
+  const uid = (c: AppContext) => c.get('session')?.uid ?? '';
+  const role = (c: AppContext) => c.get('role');
+  const fresh = (c: AppContext) => {
+    const session = c.get('session');
+    return session !== null && hasFreshSecondFactor(session, c.get('now'));
+  };
+  const forbidden = (c: AppContext) =>
+    c.html(pages.problem(nav(c), 'Not allowed', 'Your staff role doesn’t allow this.'), 403);
+  const notFound = (c: AppContext) =>
+    c.html(pages.problem(nav(c), 'Not found', 'This page doesn’t exist.'), 404);
+  /** A form that changes money or rules: owner or admin, with a second factor from the last 15 min. */
+  const sensitive = (c: AppContext, page: string) => {
+    if (!can.change(role(c))) return forbidden(c);
+    if (!fresh(c)) {
+      return c.redirect(`/signin?second_factor=1&return=${encodeURIComponent(page)}`, 303);
+    }
+    return null;
+  };
+  const changer = (c: AppContext) => (can.change(role(c)) ? null : forbidden(c));
+  const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: string }): T => {
+    if (!result.ok) throw new Error(`core: ${result.error}`);
+    return result.value;
+  };
+
+  // ---- Public ---------------------------------------------------------------------------------
+
+  // The start page: a sign-in page, or for staff what needs doing today.
+  app.use('/', async (c: AppContext, next) => (c.get('session') ? staffGate(c, next) : next()));
+  app.get('/', async (c) => {
+    if (!c.get('session')) return c.html(pages.home());
+    const [queue, uninvoiced, ready, approved, waiting] = await Promise.all([
+      core(c.env).reviewQueue(500),
+      core(c.env).uninvoiced(),
+      core(c.env).payouts('ready'),
+      core(c.env).payouts('approved'),
+      core(c.env).agents('kyc_pending'),
+    ]);
+    const reviews = { delivery: 0, missing_vin: 0, plate_conflict: 0 };
+    for (const item of unwrap(queue)) reviews[item.kind]++;
+    return c.html(
+      pages.today(
+        nav(c),
+        {
+          reviews,
+          uninvoiced: unwrap(uninvoiced),
+          payoutsReady: unwrap(ready).length,
+          payoutsApproved: unwrap(approved).length,
+          agentsWaiting: unwrap(waiting).length,
+        },
+        c.get('now'),
+      ),
+    );
+  });
+
+  app.get('/oauth/client.json', (c) => {
+    const response = c.json(clientMetadata(c.env));
+    response.headers.set('Cache-Control', 'public, max-age=300');
+    return response;
+  });
+
+  app.get('/robots.txt', (c) => c.text('User-agent: *\nDisallow: /\n'));
+
+  // ---- Sign-in: always with a second factor ----------------------------------------------------
+
+  app.get('/signin', async (c) => {
+    if (!(await underRateLimit(c, 'signin'))) {
+      return c.html(
+        pages.problem(nav(c), 'Too many attempts', 'Wait a minute and try again.'),
+        429,
+      );
+    }
+    const returnTo = safeReturnTo(c.req.query('return'));
+    const again = c.req.query('second_factor') === '1';
+    const session = c.get('session');
+    if (session && session.aal2At !== null && !again) return c.redirect(returnTo ?? '/', 302);
+    const { cookieValue, location } = await startSignIn(c.env, c.get('now'), returnTo, {
+      secondFactor: true,
+    });
+    setCookie(c, SIGNIN_COOKIE, cookieValue, SIGNIN_TTL_SECONDS);
+    return c.redirect(location, 302);
+  });
+
+  app.get('/callback', async (c) => {
+    setCookie(c, SIGNIN_COOKIE, '', 0);
+    if (c.req.query('error')) {
+      return c.html(
+        pages.problem(nav(c), 'Not signed in', 'Sign-in was cancelled or not allowed.'),
+        400,
+      );
+    }
+    try {
+      const {
+        uid: user,
+        aal2At,
+        returnTo,
+      } = await finishSignIn(c.env, c.get('now'), {
+        cookieValue: readCookie(c.req.header('Cookie'), SIGNIN_COOKIE),
+        state: c.req.query('state') ?? null,
+        code: c.req.query('code') ?? null,
+        iss: c.req.query('iss') ?? null,
+      });
+      if (aal2At === null) {
+        return c.html(
+          pages.problem(
+            nav(c),
+            'Second factor needed',
+            'Emanet Merkez needs your second factor (passkey or authenticator app). Add one to your 2earl account and sign in again.',
+          ),
+          403,
+        );
+      }
+      const previous = c.get('session');
+      if (previous) await endWebSession(c.env, previous);
+      setCookie(
+        c,
+        SESSION_COOKIE,
+        await createWebSession(c.env, c.get('now'), user, aal2At),
+        SESSION_ABSOLUTE_SECONDS,
+      );
+      return c.redirect(safeReturnTo(returnTo) ?? '/', 302);
+    } catch (error) {
+      if (!(error instanceof SignInError)) throw error;
+      console.error('sign-in failed', error.message);
+      return c.html(
+        pages.problem(nav(c), 'Not signed in', 'Sign-in didn’t complete. Start again.'),
+        400,
+      );
+    }
+  });
+
+  app.post('/signout', async (c) => {
+    const session = c.get('session');
+    if (session) await endWebSession(c.env, session);
+    setCookie(c, SESSION_COOKIE, '', 0);
+    return c.redirect('/', 303);
+  });
+
+  // ---- Reviews ----------------------------------------------------------------------------------
+
+  const REVIEW_KINDS: ReviewItem['kind'][] = ['delivery', 'missing_vin', 'plate_conflict'];
+
+  app.get('/reviews', async (c) => {
+    const kind = c.req.query('kind');
+    const filter = REVIEW_KINDS.includes(kind as ReviewItem['kind'])
+      ? (kind as ReviewItem['kind'])
+      : null;
+    const queue = unwrap(await core(c.env).reviewQueue(500));
+    return c.html(pages.reviewList(nav(c), queue, filter, done(c)));
+  });
+
+  const showReview = async (c: AppContext, error: string | null, status: 200 | 409 | 422 = 200) => {
+    const result = await core(c.env).review(c.req.param('id') ?? '');
+    if (!result.ok) return notFound(c);
+    return c.html(pages.reviewDetail(nav(c), result.value, role(c), error), status);
+  };
+
+  app.get('/reviews/:id', (c) => showReview(c, null));
+
+  app.post('/reviews/:id/accept', async (c) => {
+    if (!can.review(role(c))) return forbidden(c);
+    const form = await c.req.parseBody();
+    const vin = text(form.vin).toUpperCase().replace(/\s/g, '');
+    const result = await core(c.env).resolveIdentity(uid(c), c.req.param('id'), {
+      action: 'accept',
+      ...(vin ? { vin } : {}),
+    });
+    if (!result.ok)
+      return showReview(c, errorText(result.error), result.error === 'duplicate_case' ? 409 : 422);
+    return c.redirect('/reviews?done=accepted', 303);
+  });
+
+  app.post('/reviews/:id/reject', async (c) => {
+    if (!can.review(role(c))) return forbidden(c);
+    const form = await c.req.parseBody();
+    const result = await core(c.env).resolveIdentity(uid(c), c.req.param('id'), {
+      action: 'reject',
+      reason: text(form.reason),
+    });
+    if (!result.ok) return showReview(c, errorText(result.error), 422);
+    return c.redirect('/reviews?done=rejected', 303);
+  });
+
+  app.post('/reviews/:id/deliver', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const review = await core(c.env).review(c.req.param('id'));
+    if (!review.ok || review.value.item.kind !== 'delivery' || !review.value.claim)
+      return notFound(c);
+    const result = await core(c.env).confirmDelivery(uid(c), review.value.claim.id);
+    if (!result.ok) return showReview(c, errorText(result.error, result.detail), 422);
+    return c.redirect('/reviews?done=delivered', 303);
+  });
+
+  /** An evidence file, only while its delivery is open for review. */
+  app.get('/reviews/:id/evidence/:evidence', async (c) => {
+    const review = await core(c.env).review(c.req.param('id'));
+    const item = review.ok
+      ? review.value.evidence?.find((e) => e.id === c.req.param('evidence'))
+      : undefined;
+    if (!item) return notFound(c);
+    const object = await c.env.EVIDENCE.get(item.file_ref);
+    if (!object) return notFound(c);
+    const type = object.httpMetadata?.contentType ?? '';
+    const image = /^image\/(jpeg|png|webp|heic|avif)$/.test(type);
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': image ? type : 'application/octet-stream',
+        'Content-Disposition': image ? 'inline' : `attachment; filename="${item.id}"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
+
+  // ---- Partners ---------------------------------------------------------------------------------
+
+  app.get('/partners', async (c) => {
+    const partners = unwrap(await core(c.env).partners());
+    return c.html(pages.partnerList(nav(c), partners, can.change(role(c)), null, {}));
+  });
+
+  const formValues = async (c: AppContext) => {
+    const form = await c.req.parseBody();
+    const values: Record<string, string> = {};
+    for (const [key, value] of Object.entries(form)) values[key] = text(value);
+    return values;
+  };
+  const taxOf = (v: Record<string, string>) => ({
+    vkn: v.vkn ? v.vkn : null,
+    taxOffice: v.tax_office ? v.tax_office : null,
+    kepAddress: v.kep_address ? v.kep_address : null,
+    eInvoice: v.e_invoice === '1',
+    reconfirmDays: Number(v.reconfirm_days),
+  });
+
+  app.post('/partners', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const tax = taxOf(v);
+    const kind = PARTNER_KINDS.includes(v.kind as PartnerKind) ? (v.kind as PartnerKind) : 'other';
+    if (!v.org_id) {
+      const partners = unwrap(await core(c.env).partners());
+      return c.html(
+        pages.partnerList(nav(c), partners, true, 'Enter the login organization ID.', v),
+        422,
+      );
+    }
+    const result = await core(c.env).createPartner(uid(c), {
+      orgId: v.org_id,
+      kind,
+      legalName: v.legal_name ?? '',
+      ...(tax.vkn ? { vkn: tax.vkn } : {}),
+      ...(tax.taxOffice ? { taxOffice: tax.taxOffice } : {}),
+      ...(tax.kepAddress ? { kepAddress: tax.kepAddress } : {}),
+      eInvoice: tax.eInvoice,
+      ...(Number.isInteger(tax.reconfirmDays) ? { reconfirmDays: tax.reconfirmDays } : {}),
+    });
+    if (!result.ok) {
+      const partners = unwrap(await core(c.env).partners());
+      return c.html(
+        pages.partnerList(nav(c), partners, true, errorText(result.error, result.detail), v),
+        result.error === 'partner_exists' ? 409 : 422,
+      );
+    }
+    return c.redirect(`/partners/${result.value.id}?done=saved`, 303);
+  });
+
+  const showPartner = async (
+    c: AppContext,
+    error: string | null,
+    status: 200 | 409 | 422 = 200,
+  ) => {
+    const result = await core(c.env).partner(c.req.param('id') ?? '');
+    if (!result.ok) return notFound(c);
+    return c.html(
+      pages.partnerDetail(nav(c), result.value, can.change(role(c)), fresh(c), done(c), error),
+      status,
+    );
+  };
+
+  app.get('/partners/:id', (c) => showPartner(c, null));
+
+  app.post('/partners/:id', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).updatePartner(uid(c), c.req.param('id'), {
+      legalName: v.legal_name ?? '',
+      ...taxOf(v),
+    });
+    if (!result.ok) return showPartner(c, errorText(result.error, result.detail), 422);
+    return c.redirect(`/partners/${c.req.param('id')}?done=saved`, 303);
+  });
+
+  app.post('/partners/:id/status', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    if (v.status !== 'active' && v.status !== 'suspended')
+      return showPartner(c, errorText('x'), 422);
+    const result = await core(c.env).setPartnerStatus(uid(c), c.req.param('id'), v.status);
+    if (!result.ok) return showPartner(c, errorText(result.error), 422);
+    return c.redirect(
+      `/partners/${c.req.param('id')}?done=${v.status === 'active' ? 'activated' : 'suspended'}`,
+      303,
+    );
+  });
+
+  app.post('/partners/:id/prices', async (c) => {
+    const denied = sensitive(c, `/partners/${c.req.param('id')}`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const list = parsePriceList(v.default ?? '', v.rules ?? '');
+    if (!list.ok) return showPartner(c, list.error, 422);
+    const result = await core(c.env).setPriceList(uid(c), c.req.param('id'), list.value);
+    if (!result.ok) return showPartner(c, errorText(result.error, result.detail), 422);
+    return c.redirect(`/partners/${c.req.param('id')}?done=saved`, 303);
+  });
+
+  app.post('/partners/:id/fields', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const type = v.type as NewField['type'];
+    const values = (v.enum_values ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const field: NewField = {
+      partnerId: c.req.param('id'),
+      entity: v.entity === 'vehicle' || v.entity === 'place' ? v.entity : 'case',
+      key: v.key ?? '',
+      labelTr: v.label_tr ?? '',
+      labelEn: v.label_en ?? '',
+      type,
+      required: v.required === '1',
+      pii: v.pii === '1',
+      visibility:
+        v.visibility === 'admin' || v.visibility === 'agent_after_claim' ? v.visibility : 'partner',
+      ...(values.length ? { enumValues: values } : {}),
+    };
+    const result = await core(c.env).defineField(uid(c), field);
+    if (!result.ok) return showPartner(c, errorText(result.error, result.detail), 422);
+    return c.redirect(`/partners/${c.req.param('id')}?done=saved`, 303);
+  });
+
+  app.post('/partners/:id/fields/:field/retire', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const result = await core(c.env).deprecateField(uid(c), c.req.param('field'));
+    if (!result.ok) return showPartner(c, errorText(result.error), 422);
+    return c.redirect(`/partners/${c.req.param('id')}?done=saved`, 303);
+  });
+
+  // ---- Agents -----------------------------------------------------------------------------------
+
+  const showAgents = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
+    const raw = c.req.query('status');
+    const filter = pages.AGENT_STATUSES.includes(raw as AgentRow['status'])
+      ? (raw as AgentRow['status'])
+      : null;
+    const agents = unwrap(await core(c.env).agents(filter));
+    return c.html(
+      pages.agentList(nav(c), agents, filter, can.change(role(c)), done(c), error),
+      status,
+    );
+  };
+
+  app.get('/agents', (c) => showAgents(c, null));
+
+  app.post('/agents/:id/status', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    if (!pages.AGENT_STATUSES.includes(v.status as AgentRow['status'])) {
+      return showAgents(c, errorText('invalid_setting'), 422);
+    }
+    if (!v.reason) return showAgents(c, errorText('invalid_reason'), 422);
+    const result = await core(c.env).setAgentStatus(
+      uid(c),
+      c.req.param('id'),
+      v.status as AgentRow['status'],
+      v.reason,
+    );
+    if (!result.ok) return showAgents(c, errorText(result.error), 422);
+    return c.redirect('/agents?done=saved', 303);
+  });
+
+  // ---- Money ------------------------------------------------------------------------------------
+
+  const showMoney = async (c: AppContext, error: string | null, status: 200 | 409 | 422 = 200) => {
+    const partnerFilter = c.req.query('partner') || null;
+    const [uninvoiced, invoices, payouts, partners, settings] = await Promise.all([
+      core(c.env).uninvoiced(),
+      core(c.env).invoices(partnerFilter),
+      core(c.env).payouts(null),
+      core(c.env).partners(),
+      core(c.env).settings(),
+    ]);
+    return c.html(
+      pages.money(
+        nav(c),
+        {
+          uninvoiced: unwrap(uninvoiced),
+          invoices: unwrap(invoices),
+          payouts: unwrap(payouts),
+          partners: unwrap(partners),
+          partnerFilter,
+          dualApprovalKurus: unwrap(settings).dual_approval_kurus,
+        },
+        uid(c),
+        can.change(role(c)),
+        fresh(c),
+        c.get('now'),
+        done(c),
+        error,
+      ),
+      status,
+    );
+  };
+
+  app.get('/money', (c) => showMoney(c, null));
+
+  app.get('/money/ledger', async (c) =>
+    c.html(pages.ledger(nav(c), unwrap(await core(c.env).trialBalance()))),
+  );
+
+  app.post('/money/invoices', async (c) => {
+    const denied = sensitive(c, '/money');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).issueInvoice(uid(c), v.partner_id ?? '');
+    if (!result.ok) return showMoney(c, errorText(result.error), 422);
+    return c.redirect('/money?done=invoiced', 303);
+  });
+
+  app.post('/money/receipts', async (c) => {
+    const denied = sensitive(c, '/money');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const amount = parseLira(v.amount ?? '');
+    if (amount === null || amount === 0) return showMoney(c, errorText('invalid_amount'), 422);
+    const invoice = unwrap(await core(c.env).invoices(null)).find((i) => i.id === v.invoice_id);
+    if (!invoice) return showMoney(c, errorText('invoice_not_open'), 422);
+    const result = await core(c.env).recordReceipt(uid(c), {
+      partnerId: invoice.partner_id,
+      invoiceId: invoice.id,
+      amountKurus: amount,
+      valueDate: v.value_date ?? '',
+      bankRef: v.bank_ref ?? '',
+      source: 'manual',
+    });
+    if (!result.ok) {
+      return showMoney(
+        c,
+        errorText(result.error),
+        result.error === 'duplicate_bank_ref' ? 409 : 422,
+      );
+    }
+    return c.redirect('/money?done=received', 303);
+  });
+
+  app.post('/money/payouts/:id/order', async (c) => {
+    const denied = sensitive(c, '/money');
+    if (denied) return denied;
+    const result = await core(c.env).orderPayout(uid(c), c.req.param('id'));
+    if (!result.ok) return showMoney(c, errorText(result.error), 422);
+    const outcome = result.value.status === 'ready' ? 'waiting' : 'approved';
+    return c.redirect(`/money?done=${outcome}#payouts`, 303);
+  });
+
+  app.post('/money/payouts/:id/sent', async (c) => {
+    const denied = sensitive(c, '/money');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).markPayoutSent(uid(c), c.req.param('id'), v.bank_ref ?? '');
+    if (!result.ok) return showMoney(c, errorText(result.error), 422);
+    return c.redirect('/money?done=sent#payouts', 303);
+  });
+
+  // ---- Settings ---------------------------------------------------------------------------------
+
+  const showSettings = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
+    const [settings, rule] = await Promise.all([core(c.env).settings(), core(c.env).payoutRule()]);
+    return c.html(
+      pages.settingsPage(
+        nav(c),
+        unwrap(settings),
+        unwrap(rule),
+        can.change(role(c)),
+        fresh(c),
+        done(c),
+        error,
+      ),
+      status,
+    );
+  };
+
+  app.get('/settings', (c) => showSettings(c, null));
+
+  app.post('/settings', async (c) => {
+    const denied = sensitive(c, '/settings');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const current = unwrap(await core(c.env).settings());
+    const changes: [keyof Settings, number][] = [];
+    for (const key of Object.keys(pages.SETTING_FORMS) as (keyof Settings)[]) {
+      const raw = v[key];
+      if (raw === undefined) continue;
+      const value = parseSetting(key, raw);
+      if (value === null) {
+        return showSettings(
+          c,
+          `${errorText('invalid_setting')} (${pages.SETTING_FORMS[key].label})`,
+          422,
+        );
+      }
+      if (value !== current[key]) changes.push([key, value]);
+    }
+    for (const [key, value] of changes) {
+      const result = await core(c.env).setSetting(uid(c), key, value);
+      if (!result.ok) return showSettings(c, errorText(result.error), 422);
+    }
+    return c.redirect('/settings?done=saved', 303);
+  });
+
+  app.post('/settings/payout-rule', async (c) => {
+    const denied = sensitive(c, '/settings');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const rule = parsePayoutRule({
+      share: v.share ?? '',
+      fixed: v.fixed ?? '',
+      min: v.min ?? '',
+      max: v.max ?? '',
+    });
+    if (!rule.ok) return showSettings(c, rule.error, 422);
+    const result = await core(c.env).setPayoutRule(uid(c), rule.value);
+    if (!result.ok) return showSettings(c, errorText(result.error, result.detail), 422);
+    return c.redirect('/settings?done=saved', 303);
+  });
+
+  // Static files (styles, icon); anything else is not found.
+  app.get('*', async (c) => {
+    const asset = await c.env.ASSETS.fetch(c.req.raw);
+    if (asset.status !== 404) return asset;
+    return notFound(c);
+  });
+
+  return app;
+}
