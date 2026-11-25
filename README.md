@@ -53,7 +53,7 @@ on any sentence without a translation.
 ## Deploy
 
 `.github/workflows/deploy.yml` deploys `main` after approval in the `production` environment
-(secret `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID`). It makes `SESSION_PEPPER` once
+(secret `CLOUDFLARE_API_TOKEN`; the account ID is in `wrangler.jsonc`). It makes `SESSION_PEPPER` once
 if the Worker doesn't have it, applies D1 migrations, deploys, and checks the site answers.
 
 Order: emanet-core first (the `ControlApi` it binds to), then this Worker; the custom domain is

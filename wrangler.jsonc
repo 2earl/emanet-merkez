@@ -1,6 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "emanet-merkez",
+  // The 2earl Cloudflare account. An identifier, not a credential; deploys need only the token.
+  "account_id": "304c2b77d734c688c8309d5a535f561a",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["global_fetch_strictly_public", "nodejs_als"],
