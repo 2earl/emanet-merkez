@@ -1,0 +1,68 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "emanet-merkez",
+  // The 2earl Cloudflare account. An identifier, not a credential; deploys need only the token.
+  "account_id": "304c2b77d734c688c8309d5a535f561a",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["global_fetch_strictly_public", "nodejs_als"],
+
+  // Served at https://emanet-merkez.2earl.com: the custom domain is 2earl/emanet-core's
+  // infra/worker.tf, attached once this Worker exists.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // Invocation logs could record partner, agent and payment data.
+  "observability": {
+    "enabled": false,
+  },
+
+  "vars": {
+    "SITE_ORIGIN": "https://emanet-merkez.2earl.com",
+    "AUTHORIZATION_SERVER": "https://login.2earl.com",
+  },
+
+  "secrets": {
+    "required": [
+      // HMAC key for session and sign-in cookies (only HMACs are stored).
+      "SESSION_PEPPER",
+    ],
+  },
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
+
+  "services": [
+    // Token exchange and validation for sign-in, never over the public Internet.
+    { "binding": "AUTH_SERVER", "service": "login" },
+    // Who is 2earl staff, and in which role, read on every request (login DESIGN §4.29).
+    { "binding": "STAFF", "service": "login", "entrypoint": "StaffDirectory" },
+    // Emanet's data and rules, as staff may change them (emanet-core).
+    { "binding": "CORE", "service": "emanet-core", "entrypoint": "ControlApi" },
+  ],
+
+  "ratelimits": [
+    {
+      "name": "FORM_RATE_LIMITER",
+      "namespace_id": "3001",
+      "simple": { "limit": 30, "period": 60 },
+    },
+  ],
+
+  // Agents' photos and reports, read by staff before confirming a delivery (written by Emanet
+  // Saha). EU jurisdiction, like the databases.
+  "r2_buckets": [{ "binding": "EVIDENCE", "bucket_name": "emanet-evidence", "jurisdiction": "eu" }],
+
+  // Sessions and sign-in transactions only; everything else is in emanet-core.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "emanet-merkez",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+}
