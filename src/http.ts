@@ -88,7 +88,7 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   'Content-Security-Policy': CSP,
-  // Only 2earl.com is for search engines.
+  // Only emanet.dev is for search engines.
   'X-Robots-Tag': 'noindex, nofollow',
 };
 

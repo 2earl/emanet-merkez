@@ -76,6 +76,22 @@ a {
   flex-wrap: wrap;
 }
 
+/* On a phone the sections stay on one line that scrolls sideways, under the brand. */
+@media (max-width: 40rem) {
+  .bar nav {
+    order: 3;
+    flex: 1 0 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    scrollbar-width: none;
+  }
+
+  .bar nav a {
+    white-space: nowrap;
+  }
+}
+
 .bar nav a {
   text-decoration: none;
   color: #c9ced6;
@@ -567,4 +583,20 @@ article.contract {
   font-family: Georgia, 'Times New Roman', serif;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+/* Keyboard users can jump past the header. */
+.skip {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--focus);
+  z-index: 10;
+}
+
+.skip:focus {
+  top: 0.5rem;
 }

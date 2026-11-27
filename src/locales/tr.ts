@@ -563,5 +563,10 @@ export const tr: Catalog = {
     By: 'Onaylayan',
     Version: 'Sürüm',
     IP: 'IP',
+    '2earl staff only. Every change is recorded with your name. Times are Turkey time.':
+      'Yalnızca 2earl personeli. Her değişiklik adınızla kaydedilir. Saatler Türkiye saatidir.',
+    'Privacy notice': 'Gizlilik',
+    'Skip to content': 'İçeriğe geç',
+    'Terms of use': 'Kullanım şartları',
   },
 };

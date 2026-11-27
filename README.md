@@ -1,6 +1,6 @@
 # Emanet Merkez
 
-The 2earl staff console for Emanet at **emanet-merkez.2earl.com**: partners and their price lists
+The 2earl staff console for Emanet at **merkez.emanet.dev**: partners and their price lists
 and fields, agents and their verification, the review queue, deliveries, invoices, partners'
 payments, agents' payouts, the trial balance and the rules. Only 2earl staff can sign in.
 
