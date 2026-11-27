@@ -185,6 +185,17 @@ export function onboardingDetail(
          ${d && o.signer_name && o.signer_name.trim().toLocaleLowerCase('tr-TR') !== d.signatoryName.trim().toLocaleLowerCase('tr-TR') ? '<p class="error">The person who accepted isn’t the signatory named in the details. Check the signature circular.</p>' : ''}
          <details><summary>Read the accepted text</summary><article class="contract" lang="tr" translate="no">${esc(o.contract_text ?? '')}</article></details>`
       : '';
+  const history =
+    (o.acceptances ?? []).length > 1 || (o.acceptances?.length === 1 && o.signed_at === null)
+      ? `<h3>Earlier acceptances</h3><table><thead><tr><th>Accepted</th><th>By</th><th>Version</th><th>SHA-256</th><th>IP</th></tr></thead><tbody>${(
+          o.acceptances ?? []
+        )
+          .map(
+            (a) =>
+              `<tr><td>${moment(a.signed_at)}</td><td>${data(`${a.signer_name}, ${a.signer_title}`)}</td><td>${data(a.contract_version)}</td><td><code translate="no">${esc(a.contract_sha256.slice(0, 16))}…</code></td><td>${a.signer_ip ? data(a.signer_ip) : '—'}</td></tr>`,
+          )
+          .join('')}</tbody></table>`
+      : '';
   const reason = (action: string, label: string, button: string, secondary = true) =>
     `<form method="post" action="${path}/${action}" class="stack">
        <label>${label} <input name="reason" required maxlength="300"></label>
@@ -227,6 +238,7 @@ export function onboardingDetail(
      ${company}
      ${documents}
      ${agreement}
+     ${history}
      ${prices}
      ${actions ? `<h2>Decide</h2>${actions}` : ''}`,
   );
