@@ -88,7 +88,8 @@ function seed() {
         evidence: [{ id: 'e-1', kind: 'yediemin_receipt', file_ref: 'claims/cl-1/e-1', sha256: 'x', exif_time: t - 900,
           exif_lat: null, exif_lng: null, status: 'submitted', created_at: t - 800 }],
         cases: [{ id: 'c-3', legal_name: 'Test Bankası A.Ş.', external_ref: 'K-3', fee_kurus: 1200000,
-          icra_office: 'İzmir 3. İcra Dairesi', icra_file_no: '2026/77' }] }],
+          icra_office: 'İzmir 3. İcra Dairesi', icra_file_no: '2026/77' }],
+        signals: { seconds_to_sighting: 300, nearest_place_m: 7400, agent_deliveries: 2, agent_strikes: 1 } }],
     ]),
     uninvoiced: [{ partner_id: 'p-1', legal_name: 'Test Bankası A.Ş.', cases: 1, net_kurus: 1000000, oldest_delivery: t - 86400 * 6 }],
     invoices: [{ id: 'i-1', partner_id: 'p-1', legal_name: 'Test Bankası A.Ş.', number: null, issued_at: t - 86400,
@@ -240,6 +241,34 @@ export class ControlApi extends WorkerEntrypoint {
       return ok({ cases: r.cases.map((c) => c.id), payout: { id: 'po-new', gross_kurus: 600000, net_kurus: 600000 } });
     }
     return fail('not_found');
+  }
+  async rejectDelivery(staffId, claimId, input) {
+    log('rejectDelivery', [staffId, claimId, input]);
+    if (!input.reason) return fail('invalid_reason');
+    for (const [id, r] of s.reviews) if (r.item.kind === 'delivery' && r.claim.id === claimId) {
+      s.reviews.delete(id);
+      return ok({ strikes: input.strike ? 1 : 0 });
+    }
+    return fail('not_found');
+  }
+  async setInvoiceNumber(staffId, invoiceId, input) {
+    log('setInvoiceNumber', [staffId, invoiceId, input]);
+    const i = s.invoices.find((x) => x.id === invoiceId);
+    if (!i) return fail('not_found');
+    if (!/^[A-Za-z0-9][A-Za-z0-9/-]{2,31}$/.test(input.number)) return fail('invalid_invoice_number');
+    if (s.invoices.some((x) => x !== i && x.number === input.number.toUpperCase())) return fail('duplicate_invoice_number');
+    i.number = input.number.toUpperCase();
+    return ok(null);
+  }
+  async audit(staffId, query) {
+    log('audit', [staffId, query]);
+    if (query.subject && /[^A-Za-z0-9_.:/@-]/.test(query.subject)) return fail('invalid_filter');
+    const t = now();
+    const events = [
+      { id: 'a-2', at: t - 60, actor: 'staff:admin-1', action: 'delivery.rejected', subject: 'claim:cl-9', detail: { reason: 'Wrong plate', strike: true } },
+      { id: 'a-1', at: t - 3600, actor: 'partner:p-1/user-1', action: 'case.created', subject: 'case:c-1', detail: {} },
+    ].filter((e) => (!query.subject || e.subject === query.subject) && (!query.actor || e.actor === query.actor));
+    return ok({ events, next_before: query.before ? null : t - 3600 });
   }
   async uninvoiced() { return ok(s.uninvoiced); }
   async invoices(partnerId) { return ok(s.invoices.filter((i) => partnerId === null || i.partner_id === partnerId)); }

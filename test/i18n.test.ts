@@ -59,15 +59,19 @@ describe('Turkish', () => {
         '/money?partner=p-1',
         '/money/ledger',
         '/settings',
+        '/audit',
+        '/audit?subject=case:c-1',
+        '/audit?subject=nothing:here',
+        '/audit?subject=%3Cx%3E',
       ]) {
         await get(path, cookie);
       }
     }
     for (const done of ['saved', 'activated', 'suspended'])
       await get(`/partners/p-1?done=${done}`, admin);
-    for (const done of ['accepted', 'rejected', 'delivered'])
+    for (const done of ['accepted', 'rejected', 'delivered', 'dismissed'])
       await get(`/reviews?done=${done}`, admin);
-    for (const done of ['invoiced', 'received', 'approved', 'waiting', 'sent'])
+    for (const done of ['invoiced', 'received', 'approved', 'waiting', 'sent', 'numbered'])
       await get(`/money?done=${done}`, admin);
     await get('/settings?done=saved', admin);
     await get('/agents?done=saved', admin);
@@ -80,6 +84,11 @@ describe('Turkish', () => {
     await send('/reviews/r-vin/accept', support, { vin: 'x' });
     await send('/reviews/r-vin/reject', support, { reason: '' });
     await send('/reviews/r-del/deliver', support);
+    await send('/reviews/r-del/dismiss', admin, { reason: '' });
+    await send('/money/invoices/i-1/number', admin, { number: '!' });
+    await send('/money/invoices/i-1/number', admin, { number: 'EMA2026000000009' });
+    await get('/money', admin);
+    await send('/agents/agent-1/status', admin, { status: 'active', reason: 'x' });
     await send('/partners', support, {});
     await send('/partners', admin, { org_id: '' });
     await send('/partners', admin, { org_id: 'org-1', legal_name: 'X', reconfirm_days: '14' });

@@ -577,5 +577,51 @@ export const tr: Catalog = {
     'No contact to send to': 'Gönderilecek iletişim adresi yok',
     'Turn notices on': 'Bildirimleri aç',
     'Turn notices off': 'Bildirimleri kapat',
+    Audit: 'Denetim kaydı',
+    'Before you decide': 'Karar vermeden önce',
+    'From claim to sighting': 'Üstlenmeden görme bildirimine',
+    'Sighting to the nearest known place': 'Görülen yer ile bilinen en yakın adres arası',
+    'No place with coordinates': 'Koordinatı olan adres yok',
+    'Agent’s deliveries': 'Saha ajanının teslimleri',
+    'Agent’s strikes': 'Saha ajanının ihtarları',
+    'Look twice': 'Dikkatle bakın',
+    'Taken before the claim': 'Üstlenmeden önce çekilmiş',
+    Confirm: 'Onayla',
+    'Don’t accept': 'Kabul etme',
+    'Don’t accept this delivery': 'Bu teslimi kabul etme',
+    'Reason for the agent': 'Saha ajanına bildirilecek neden',
+    'Count a strike against the agent (a false or careless report).':
+      'Saha ajanına ihtar yaz (asılsız veya özensiz bildirim).',
+    'The claim ends and these photos can’t be used again. The agent reads your reason and can’t take this vehicle again for a while. No partner is told and nothing is booked.':
+      'Üstlenme sona erer ve bu fotoğraflar yeniden kullanılamaz. Saha ajanı nedeninizi görür ve bu aracı bir süre yeniden üstlenemez. Hiçbir kuruma bildirim gitmez, muhasebe kaydı oluşmaz.',
+    'Not accepted. The agent reads your reason; nothing was booked.':
+      'Kabul edilmedi. Saha ajanı nedeninizi görür; muhasebe kaydı oluşmadı.',
+    'E-invoice number': 'e-Fatura numarası',
+    'Save number': 'Numarayı kaydet',
+    'Invoice number saved.': 'Fatura numarası kaydedildi.',
+    'Enter the e-invoice number: 3 to 32 letters and digits.':
+      'e-Fatura numarasını girin: 3–32 harf ve rakam.',
+    'The ETTN is the invoice’s UUID, like 123e4567-e89b-12d3-a456-426614174000.':
+      'ETTN, faturanın UUID’sidir; örneğin 123e4567-e89b-12d3-a456-426614174000.',
+    'Another invoice already has this number.': 'Bu numara başka bir faturada kayıtlı.',
+    'An agent becomes active only after sending their application, from the identity check or a suspension.':
+      'Saha ajanı yalnızca başvurusunu gönderdikten sonra, kimlik kontrolünden veya askıdan etkin duruma geçer.',
+    'Choose a status.': 'Bir durum seçin.',
+    'The agent hasn’t reported a sighting on this claim.':
+      'Saha ajanı bu üstlenme için görme bildirimi yapmadı.',
+    'That isn’t a subject or actor from the log.': 'Bu, kayıttaki bir konu veya kişi değil.',
+    'Everything done in Emanet, newest first: by staff, partners’ people, agents and the system. Nothing here can be changed or removed. Looking someone up is recorded too.':
+      'Emanet’te yapılan her işlem, en yenisi başta: personel, kurum çalışanları, saha ajanları ve sistem. Buradaki hiçbir kayıt değiştirilemez veya silinemez. Birini aramanız da kaydedilir.',
+    'On (subject)': 'Konu',
+    'By (actor)': 'Yapan',
+    'Show everything': 'Tümünü göster',
+    'Nothing recorded here.': 'Burada kayıt yok.',
+    Older: 'Daha eski',
+    When: 'Ne zaman',
+    Who: 'Kim',
+    What: 'Ne',
+    'partner:… claim:… agent:…': 'partner:… claim:… agent:…',
+    'staff:… agent:…': 'staff:… agent:…',
+    On: 'Konu',
   },
 };

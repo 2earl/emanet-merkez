@@ -209,6 +209,22 @@ export interface ReviewDetail {
     icra_office: string;
     icra_file_no: string;
   }[];
+  /** What to look at twice before confirming a delivery (emanet-core src/control.ts). */
+  signals?: {
+    seconds_to_sighting: number | null;
+    nearest_place_m: number | null;
+    agent_deliveries: number;
+    agent_strikes: number;
+  };
+}
+
+export interface AuditRow {
+  id: string;
+  at: number;
+  actor: string;
+  action: string;
+  subject: string;
+  detail: Record<string, unknown>;
 }
 
 export interface BalanceRow {
@@ -461,8 +477,22 @@ export interface ControlApi {
   ): Promise<
     Result<{ cases: string[]; payout: { id: string; gross_kurus: number; net_kurus: number } }>
   >;
+  rejectDelivery(
+    staffId: string,
+    claimId: string,
+    input: { reason: string; strike: boolean },
+  ): Promise<Result<{ strikes: number }>>;
   uninvoiced(): Promise<Result<UninvoicedRow[]>>;
   invoices(partnerId: string | null): Promise<Result<InvoiceRow[]>>;
+  setInvoiceNumber(
+    staffId: string,
+    invoiceId: string,
+    input: { number: string; uuid?: string | null },
+  ): Promise<Result<null>>;
+  audit(
+    staffId: string,
+    query: { subject?: string; actor?: string; before?: number; limit?: number },
+  ): Promise<Result<{ events: AuditRow[]; next_before: number | null }>>;
   issueInvoice(
     staffId: string,
     partnerId: string,

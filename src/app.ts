@@ -98,6 +98,15 @@ const ERROR_TEXT: Record<string, string> = {
   incomplete: 'The company’s organization, details or fees are missing.',
   four_eyes: 'You invited this company, so another admin must approve it.',
   invalid_provider: 'A company detail isn’t valid.',
+  agent_not_ready:
+    'An agent becomes active only after sending their application, from the identity check or a suspension.',
+  invalid_status: 'Choose a status.',
+  no_sighting: 'The agent hasn’t reported a sighting on this claim.',
+  invalid_invoice_number: 'Enter the e-invoice number: 3 to 32 letters and digits.',
+  invalid_invoice_uuid:
+    'The ETTN is the invoice’s UUID, like 123e4567-e89b-12d3-a456-426614174000.',
+  duplicate_invoice_number: 'Another invoice already has this number.',
+  invalid_filter: 'That isn’t a subject or actor from the log.',
 };
 /** The core's detail says which part was wrong; only where it helps the reader. */
 const WITH_DETAIL = new Set(['missing_evidence', 'invalid_price_list', 'invalid_payout_rule']);
@@ -118,6 +127,8 @@ const DONE: Record<string, string> = {
   accepted: 'Accepted. Agents can look for the vehicle now.',
   rejected: 'Rejected. The partner is told why.',
   delivered: 'Delivered. The partners are told, and the agent’s payout is created.',
+  dismissed: 'Not accepted. The agent reads your reason; nothing was booked.',
+  numbered: 'Invoice number saved.',
   saved: 'Saved.',
   activated: 'Activated. Its people can use Emanet Kurumsal now.',
   suspended: 'Suspended.',
@@ -136,7 +147,15 @@ const DONE: Record<string, string> = {
 };
 const done = (c: AppContext) => DONE[c.req.query('done') ?? ''] ?? null;
 
-const SECTIONS = ['/reviews', '/onboarding', '/partners', '/agents', '/money', '/settings'];
+const SECTIONS = [
+  '/reviews',
+  '/onboarding',
+  '/partners',
+  '/agents',
+  '/money',
+  '/settings',
+  '/audit',
+];
 
 export function createApp(now: () => number) {
   const app = new Hono<AppEnv>();
@@ -391,7 +410,7 @@ export function createApp(now: () => number) {
   const showReview = async (c: AppContext, error: string | null, status: 200 | 409 | 422 = 200) => {
     const result = await core(c.env).review(c.req.param('id') ?? '');
     if (!result.ok) return notFound(c);
-    return c.html(pages.reviewDetail(nav(c), result.value, role(c), error), status);
+    return c.html(pages.reviewDetail(nav(c), result.value, role(c), fresh(c), error), status);
   };
 
   app.get('/reviews/:id', (c) => showReview(c, null));
@@ -420,15 +439,40 @@ export function createApp(now: () => number) {
     return c.redirect('/reviews?done=rejected', 303);
   });
 
+  /**
+   * Confirming a delivery bills the partners and creates the agent's payout; not accepting one ends
+   * the agent's claim. Owner or admin, with a second factor from the last 15 minutes.
+   */
   app.post('/reviews/:id/deliver', async (c) => {
-    const denied = changer(c);
+    const denied = sensitive(c, `/reviews/${c.req.param('id')}`);
     if (denied) return denied;
     const review = await core(c.env).review(c.req.param('id'));
     if (!review.ok || review.value.item.kind !== 'delivery' || !review.value.claim)
       return notFound(c);
     const result = await core(c.env).confirmDelivery(uid(c), review.value.claim.id);
-    if (!result.ok) return showReview(c, errorText(result.error, result.detail), 422);
+    if (!result.ok)
+      return showReview(
+        c,
+        errorText(result.error, result.detail),
+        result.error === 'conflict_retry' ? 409 : 422,
+      );
     return c.redirect('/reviews?done=delivered', 303);
+  });
+
+  app.post('/reviews/:id/dismiss', async (c) => {
+    const denied = sensitive(c, `/reviews/${c.req.param('id')}`);
+    if (denied) return denied;
+    const review = await core(c.env).review(c.req.param('id'));
+    if (!review.ok || review.value.item.kind !== 'delivery' || !review.value.claim)
+      return notFound(c);
+    const form = await c.req.parseBody();
+    const result = await core(c.env).rejectDelivery(uid(c), review.value.claim.id, {
+      reason: text(form.reason),
+      strike: text(form.strike) === '1',
+    });
+    if (!result.ok)
+      return showReview(c, errorText(result.error), result.error === 'conflict_retry' ? 409 : 422);
+    return c.redirect('/reviews?done=dismissed', 303);
   });
 
   /** An evidence file, only while its delivery is open for review. */
@@ -646,8 +690,12 @@ export function createApp(now: () => number) {
 
   app.get('/agents/:id', (c) => showAgent(c, null));
 
+  /**
+   * Activating an agent lets them read debtors' addresses; suspending ends their claims. Owner or
+   * admin, with a second factor from the last 15 minutes.
+   */
   app.post('/agents/:id/status', async (c) => {
-    const denied = changer(c);
+    const denied = sensitive(c, `/agents/${c.req.param('id')}`);
     if (denied) return denied;
     const v = await formValues(c);
     if (!pages.AGENT_STATUSES.includes(v.status as AgentRow['status'])) {
@@ -660,7 +708,8 @@ export function createApp(now: () => number) {
       v.status as AgentRow['status'],
       v.reason,
     );
-    if (!result.ok) return showAgent(c, errorText(result.error), 422);
+    if (!result.ok)
+      return showAgent(c, errorText(result.error), result.error === 'conflict_retry' ? 409 : 422);
     return c.redirect(`/agents/${c.req.param('id')}?done=saved`, 303);
   });
 
@@ -721,6 +770,24 @@ export function createApp(now: () => number) {
     const result = await core(c.env).issueInvoice(uid(c), v.partner_id ?? '');
     if (!result.ok) return showMoney(c, errorText(result.error), 422);
     return c.redirect('/money?done=invoiced', 303);
+  });
+
+  app.post('/money/invoices/:id/number', async (c) => {
+    const denied = sensitive(c, '/money');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).setInvoiceNumber(uid(c), c.req.param('id'), {
+      number: v.number ?? '',
+      uuid: v.uuid ? v.uuid : null,
+    });
+    if (!result.ok) {
+      return showMoney(
+        c,
+        errorText(result.error),
+        result.error === 'duplicate_invoice_number' ? 409 : 422,
+      );
+    }
+    return c.redirect('/money?done=numbered#invoices', 303);
   });
 
   app.post('/money/receipts', async (c) => {
@@ -859,6 +926,36 @@ export function createApp(now: () => number) {
     const result = await core(c.env).setPayoutRule(uid(c), rule.value);
     if (!result.ok) return showSettings(c, errorText(result.error, result.detail), 422);
     return c.redirect('/settings?done=saved', 303);
+  });
+
+  // ---- Audit -----------------------------------------------------------------------------------
+
+  /** Who did what, newest first. Every staff role reads it; looking someone up is recorded. */
+  app.get('/audit', async (c) => {
+    const subject = text(c.req.query('subject'));
+    const actor = text(c.req.query('actor'));
+    const before = Number(c.req.query('before'));
+    const result = await core(c.env).audit(uid(c), {
+      ...(subject ? { subject } : {}),
+      ...(actor ? { actor } : {}),
+      ...(Number.isInteger(before) && before > 0 ? { before } : {}),
+      limit: 100,
+    });
+    if (!result.ok) {
+      return c.html(
+        pages.auditPage(nav(c), [], null, { subject, actor }, errorText(result.error)),
+        422,
+      );
+    }
+    return c.html(
+      pages.auditPage(
+        nav(c),
+        result.value.events,
+        result.value.next_before,
+        { subject, actor },
+        null,
+      ),
+    );
   });
 
   // Static files (styles, icon); anything else is not found.
