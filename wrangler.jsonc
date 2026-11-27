@@ -61,7 +61,7 @@
     {
       "binding": "DB",
       "database_name": "emanet-merkez",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "92cd704a-5c54-47b7-8bef-7238c75fc122",
       "migrations_dir": "migrations",
     },
   ],
