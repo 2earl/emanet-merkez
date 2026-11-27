@@ -402,5 +402,32 @@ export const tr: Catalog = {
     'The fixed amount isn’t an amount.': 'Sabit tutar bir tutar değil.',
     'A bound isn’t an amount.': 'Sınırlardan biri bir tutar değil.',
     'The lower bound is above the upper bound.': 'Alt sınır üst sınırdan büyük.',
+    'An agent can claim vehicles only when active: identity checked in a video call with their ID card, and an IBAN in their own name.':
+      'Bir saha ajanı araçları yalnızca etkinken üstlenebilir: kimliği kimlik kartıyla görüntülü görüşmede doğrulanmış ve kendi adına bir IBAN’ı olmalıdır.',
+    'Call the agent on a video call at the number above.':
+      'Ajanı yukarıdaki numaradan görüntülü arayın.',
+    'Change status': 'Durumu değiştir',
+    'Check the IBAN is in that name: the bank’s name check, or a small test transfer whose reference they read back to you. Then mark it verified below.':
+      'IBAN’ın bu adda olduğunu doğrulayın: bankanın isim sorgusuyla ya da açıklamasını size okuyacakları küçük bir deneme havalesiyle. Sonra aşağıda doğrulandı olarak işaretleyin.',
+    'Confirm you checked the IBAN.': 'IBAN’ı kontrol ettiğinizi onaylayın.',
+    'Don’t write down or keep the ID number or a picture of the card.':
+      'Kimlik numarasını veya kartın görüntüsünü not etmeyin, saklamayın.',
+    'I checked that this IBAN is in the name above.':
+      'Bu IBAN’ın yukarıdaki ad adına olduğunu kontrol ettim.',
+    'Identity check': 'Kimlik doğrulaması',
+    'If everything matches, make the agent active with a short reason, like “video call, ID matched”.':
+      'Her şey eşleşiyorsa ajanı “görüntülü görüşme, kimlik eşleşti” gibi kısa bir nedenle etkinleştirin.',
+    'Mark the IBAN verified': 'IBAN’ı doğrulandı olarak işaretle',
+    Mobile: 'Cep telefonu',
+    'Rules accepted': 'Kabul edilen kurallar',
+    'Suspending or banning ends the agent’s open claims at once.':
+      'Askıya almak veya yasaklamak ajanın açık üstlenmelerini hemen sonlandırır.',
+    'The agent changed their IBAN since this page was opened. Check the new one.':
+      'Ajan, bu sayfa açıldığından beri IBAN’ını değiştirdi. Yenisini kontrol edin.',
+    'They hold their Turkish ID card next to their face: the photo is the person you see, and the name is the name above, letter for letter.':
+      'T.C. kimlik kartını yüzünün yanında tutar: fotoğraf gördüğünüz kişidir ve ad, harfi harfine yukarıdaki addır.',
+    'The agent’s IBAN isn’t verified yet. Verify it on the agent’s page first.':
+      'Ajanın IBAN’ı henüz doğrulanmadı. Önce ajanın sayfasında doğrulayın.',
+    'No name yet': 'Henüz ad yok',
   },
 };

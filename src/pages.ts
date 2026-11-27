@@ -671,9 +671,7 @@ export function agentList(
   nav: Nav,
   agents: AgentRow[],
   filter: AgentRow['status'] | null,
-  canChange: boolean,
   noticeText: string | null,
-  errorText: string | null,
 ): string {
   const filters = [
     `<a href="/agents"${filter === null ? ' aria-current="page"' : ''}>All</a>`,
@@ -682,34 +680,20 @@ export function agentList(
         `<a href="/agents?status=${s}"${filter === s ? ' aria-current="page"' : ''}>${AGENT_STATUS[s]}</a>`,
     ),
   ].join(' · ');
-  const change = (a: AgentRow) =>
-    canChange
-      ? `<form method="post" action="/agents/${attr(a.user_id)}/status" class="inline">
-          <label class="sr">New status <select name="status">${AGENT_STATUSES.filter(
-            (s) => s !== a.status,
-          )
-            .map((s) => `<option value="${s}">${AGENT_STATUS[s]}</option>`)
-            .join('')}</select></label>
-          <label class="sr">Reason <input name="reason" required maxlength="200" placeholder="Reason"></label>
-          <button class="secondary" type="submit">Change</button>
-        </form>`
-      : '';
   const table =
     agents.length === 0
       ? '<p class="panel">No agents here.</p>'
-      : `<table><thead><tr><th>Agent</th><th>City</th><th>Status</th><th>Tax</th><th>IBAN</th><th class="num">Open claims</th><th class="num">Deliveries</th><th class="num">Strikes</th><th>Since</th>${canChange ? '<th></th>' : ''}</tr></thead><tbody>${agents
+      : `<table><thead><tr><th>Agent</th><th>City</th><th>Status</th><th>IBAN</th><th class="num">Open claims</th><th class="num">Deliveries</th><th class="num">Strikes</th><th>Since</th></tr></thead><tbody>${agents
           .map(
             (a) => `<tr>
-              <td>${a.legal_name ? data(a.legal_name) : '<span class="hint">Not verified</span>'}</td>
+              <td><a href="/agents/${attr(a.user_id)}">${a.legal_name ? data(a.legal_name) : 'No name yet'}</a></td>
               <td>${a.city ? data(a.city) : '—'}</td>
               <td><span class="status ${a.status}">${AGENT_STATUS[a.status]}</span></td>
-              <td>${TAX_LABEL[a.tax_profile] ?? data(a.tax_profile)}</td>
               <td>${a.iban_verified ? 'Verified' : 'Not verified'}</td>
               <td class="num" translate="no">${String(a.open_claims)}</td>
               <td class="num" translate="no">${String(a.deliveries)}</td>
               <td class="num" translate="no">${String(a.strikes)}</td>
               <td>${day(a.created_at)}</td>
-              ${canChange ? `<td>${change(a)}</td>` : ''}
             </tr>`,
           )
           .join('')}</tbody></table>`;
@@ -717,9 +701,74 @@ export function agentList(
     'Agents',
     { ...nav, current: 'agents' },
     `${notice(noticeText)}<h1>Agents</h1>
-     <p class="lede">An agent can claim vehicles only when active: identity checked with the chip of their ID card, a selfie, and an IBAN in their own name.</p>
-     ${error(errorText)}
+     <p class="lede">An agent can claim vehicles only when active: identity checked in a video call with their ID card, and an IBAN in their own name.</p>
      <p>${filters}</p>${table}`,
+  );
+}
+
+export function agentDetail(
+  nav: Nav,
+  a: AgentRow,
+  canChange: boolean,
+  fresh: boolean,
+  noticeText: string | null,
+  errorText: string | null,
+): string {
+  const path = `/agents/${a.user_id}`;
+  const check =
+    a.status === 'kyc_pending'
+      ? `<h2>Identity check</h2>
+         <ol class="steps">
+           <li>Call the agent on a video call at the number above.</li>
+           <li>They hold their Turkish ID card next to their face: the photo is the person you see, and the name is the name above, letter for letter.</li>
+           <li>Don’t write down or keep the ID number or a picture of the card.</li>
+           <li>Check the IBAN is in that name: the bank’s name check, or a small test transfer whose reference they read back to you. Then mark it verified below.</li>
+           <li>If everything matches, make the agent active with a short reason, like “video call, ID matched”.</li>
+         </ol>`
+      : '';
+  const iban =
+    a.iban && !a.iban_verified && canChange
+      ? fresh
+        ? `<form method="post" action="${path}/iban" class="stack">
+            <input type="hidden" name="iban" value="${attr(a.iban)}">
+            <label class="check"><input type="checkbox" name="checked" value="1" required> I checked that this IBAN is in the name above.</label>
+            <div><button type="submit">Mark the IBAN verified</button></div>
+          </form>`
+        : confirmFirst(path)
+      : '';
+  const status = canChange
+    ? `<h2>Change status</h2>
+       <form method="post" action="${path}/status" class="stack">
+         <div class="grid2">
+           <label>New status <select name="status">${AGENT_STATUSES.filter((s) => s !== a.status)
+             .map((s) => `<option value="${s}">${AGENT_STATUS[s]}</option>`)
+             .join('')}</select></label>
+           <label>Reason <input name="reason" required maxlength="200"></label>
+         </div>
+         <p class="hint">Suspending or banning ends the agent’s open claims at once.</p>
+         <div><button class="secondary" type="submit">Change status</button></div>
+       </form>`
+    : '';
+  return layout(
+    'Agent',
+    { ...nav, current: 'agents' },
+    `${notice(noticeText)}
+     <h1>${a.legal_name ? data(a.legal_name) : 'No name yet'} <span class="status ${a.status}">${AGENT_STATUS[a.status]}</span></h1>
+     ${error(errorText)}
+     <div class="panel"><dl class="facts">
+       <dt>Mobile</dt><dd>${a.phone ? `<a href="tel:${attr(a.phone)}" translate="no">${esc(a.phone)}</a>` : '—'}</dd>
+       <dt>City</dt><dd>${a.city ? data(a.city) : '—'}</dd>
+       <dt>IBAN</dt><dd>${a.iban ? data(a.iban) : '—'} ${a.iban ? (a.iban_verified ? '<span class="status active">Verified</span>' : '<span class="status kyc_pending">Not verified</span>') : ''}</dd>
+       <dt>Tax</dt><dd>${TAX_LABEL[a.tax_profile] ?? data(a.tax_profile)}${a.vkn ? ` · ${data(a.vkn)}` : ''}</dd>
+       <dt>Applied</dt><dd>${day(a.submitted_at)}</dd>
+       <dt>Rules accepted</dt><dd>${a.terms_version ? data(a.terms_version) : '—'}</dd>
+       <dt>Open claims</dt><dd translate="no">${String(a.open_claims)}</dd>
+       <dt>Deliveries</dt><dd translate="no">${String(a.deliveries)}</dd>
+       <dt>Strikes</dt><dd translate="no">${String(a.strikes)}</dd>
+     </dl></div>
+     ${check}
+     ${iban}
+     ${status}`,
   );
 }
 
