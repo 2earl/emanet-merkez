@@ -2,7 +2,7 @@
   "name": "@2earl/emanet-merkez",
   "version": "0.0.0",
   "private": true,
-  "description": "Emanet Merkez at emanet-merkez.2earl.com: the 2earl staff console for partners, agents, reviews, invoices and payouts. Login staff only.",
+  "description": "Emanet Merkez at merkez.emanet.dev: the 2earl staff console for partners, agents, reviews, invoices and payouts. Login staff only.",
   "license": "UNLICENSED",
   "type": "module",
   "packageManager": "pnpm@10.28.0",

@@ -42,6 +42,8 @@ const MARK =
   '<path fill="#F7931E" d="M100 0 50 50V100L100 50Z"/>' +
   '<path fill="#ED1C24" d="M0 50 50 100H15A15 15 0 0 1 0 85Z"/>' +
   '<path fill="#FBB03B" d="M100 50V85A15 15 0 0 1 85 100H50Z"/>' +
+  // Emanet: the 2earl hands holding something entrusted to them.
+  '<path fill="#ED1C24" d="M50 7 66 23 50 39 34 23Z"/>' +
   '</svg>';
 
 export type Section =
@@ -67,15 +69,16 @@ export const lira = (kurus: number) =>
 /** Lira as a form shows it for editing: 12500.00 */
 export const liraInput = (kurus: number) => (kurus / 100).toFixed(2);
 
+/** Turkey's time (UTC+3 all year): what a date means to the people Emanet works with. */
+const turkey = (unix: number) => new Date((unix + 3 * 3600) * 1000).toISOString();
+
 export const day = (unix: number | null) =>
-  unix === null
-    ? '—'
-    : `<time translate="no">${new Date(unix * 1000).toISOString().slice(0, 10)}</time>`;
+  unix === null ? '—' : `<time translate="no">${turkey(unix).slice(0, 10)}</time>`;
 
 export const moment = (unix: number | null) =>
   unix === null
     ? '—'
-    : `<time translate="no">${new Date(unix * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC</time>`;
+    : `<time translate="no">${turkey(unix).slice(0, 16).replace('T', ' ')}</time>`;
 
 const ROLE_LABEL: Record<StaffRole, string> = {
   owner: 'Owner',
@@ -112,16 +115,18 @@ export function layout(title: string, nav: Nav, body: string): string {
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="bar">
   <a class="brand" href="/">${MARK}<span translate="no">Emanet Merkez</span></a>
   ${sections}
   ${who}
 </header>
-<main>
+<main id="main">
 ${body}
 </main>
 <footer>
-  <span>2earl staff only. Every change is recorded with your name.</span>
+  <span>2earl staff only. Every change is recorded with your name. Times are Turkey time.</span>
+  <span><a href="https://emanet.dev/gizlilik">Privacy notice</a> · <a href="https://emanet.dev/kullanim-sartlari">Terms of use</a></span>
   ${languageSwitcher()}
 </footer>
 </body>
@@ -1003,7 +1008,9 @@ export function settingsPage(
   const act = canChange && fresh;
   const pv = (key: keyof Provider) =>
     attr(
-      providerValues?.[key] ?? provider?.details[key] ?? (key === 'email' ? 'legal@2earl.com' : ''),
+      providerValues?.[key] ??
+        provider?.details[key] ??
+        (key === 'email' ? 'iletisim@emanet.dev' : ''),
     );
   const providerSection = `<h2>2earl’s company details</h2>
      <p class="hint">The agreement companies accept names 2earl with these details. Until they are set, companies can read the agreement but not accept it. A change applies to agreements accepted from now on; accepted ones keep their text.</p>
