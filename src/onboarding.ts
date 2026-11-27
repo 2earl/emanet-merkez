@@ -43,10 +43,21 @@ export function registerOnboarding(app: Hono<AppEnv>, d: Deps): void {
     status: 200 | 409 | 422 = 200,
   ) => {
     const filter = statusOf(c.req.query('status'));
-    const rows = await core(c.env).onboardings(filter);
+    const [rows, provider] = await Promise.all([
+      core(c.env).onboardings(filter),
+      core(c.env).provider(),
+    ]);
     if (!rows.ok) throw new Error(`core: ${rows.error}`);
     return c.html(
-      pages.onboardingList(d.nav(c), rows.value, filter, can.change(d.role(c)), message, values),
+      pages.onboardingList(
+        d.nav(c),
+        rows.value,
+        filter,
+        can.change(d.role(c)),
+        message,
+        values,
+        provider.ok && provider.value === null,
+      ),
       status,
     );
   };

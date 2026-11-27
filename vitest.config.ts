@@ -99,6 +99,7 @@ function seed() {
         withholding_kurus: 0, net_kurus: 3000000, status: 'ready', ordered_by: null, approved_by: null, bank_ref: null, created_at: t - 7200 },
     ],
     receipts: new Set(),
+    provider: null,
     onboardings: new Map([
       ['ob-signed', onboarding('ob-signed', 'signed', 'admin-1', t)],
       ['ob-progress', onboarding('ob-progress', 'in_progress', 'admin-1', t)],
@@ -288,6 +289,13 @@ export class ControlApi extends WorkerEntrypoint {
       { code: '600', name: 'Yurt İçi Satışlar', debit_kurus: 0, credit_kurus: 1000000 },
       { code: '740', name: 'Hizmet Üretim Maliyeti', debit_kurus: 500000, credit_kurus: 0 },
     ]);
+  }
+  async provider() { return ok(s.provider); }
+  async setProvider(staffId, input) {
+    log('setProvider', [staffId, input]);
+    if (!/^[0-9]{10}$/.test(input.vkn)) return fail('invalid_provider', 'vkn');
+    s.provider = { details: input, updated_by: staffId, updated_at: now() };
+    return ok(input);
   }
   async inviteCompany(staffId, input) {
     log('inviteCompany', [staffId, input]);

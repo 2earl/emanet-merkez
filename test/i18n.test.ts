@@ -174,6 +174,22 @@ describe('Turkish', () => {
     await send('/onboarding/ob-invited/resend', second);
     await get('/onboarding?status=expired', admin);
 
+    // 2earl's company details: missing, a wrong field, set, read only.
+    await get('/settings', support);
+    const company = {
+      name: '2earl Teknoloji A.Ş.',
+      address: 'Maslak Mah. Büyükdere Cad. No: 255, İstanbul',
+      taxOffice: 'Maslak',
+      vkn: '0123456789',
+      mersis: '0012345678900015',
+      kep: '2earl@hs01.kep.tr',
+      email: 'legal@2earl.com',
+    };
+    await send('/settings/provider', second, { ...company, vkn: '1' });
+    await send('/settings/provider', second, company);
+    await get('/settings', support);
+    await get('/settings', second);
+
     expect([...missing].sort()).toEqual([]);
   });
 });
