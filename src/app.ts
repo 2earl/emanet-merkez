@@ -440,6 +440,7 @@ export function createApp(now: () => number) {
     if (!item) return notFound(c);
     const object = await c.env.EVIDENCE.get(item.file_ref);
     if (!object) return notFound(c);
+    await core(c.env).recordView(uid(c), `review:${c.req.param('id')}`, `evidence ${item.id}`);
     const type = object.httpMetadata?.contentType ?? '';
     const image = /^image\/(jpeg|png|webp|heic|avif)$/.test(type);
     return new Response(object.body, {

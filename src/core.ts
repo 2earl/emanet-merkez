@@ -316,6 +316,15 @@ export interface OnboardingDetail extends Omit<OnboardingRow, 'legal_name'> {
   signer_title: string | null;
   decision_reason: string | null;
   documents: OnboardingDocument[];
+  /** Every acceptance, oldest first, including ones cleared by a send-back. */
+  acceptances?: {
+    contract_version: string;
+    contract_sha256: string;
+    signer_name: string;
+    signer_title: string;
+    signer_ip: string | null;
+    signed_at: number;
+  }[];
 }
 
 export interface Invitation {
@@ -346,6 +355,8 @@ export interface ProviderRecord {
 }
 
 export interface ControlApi {
+  /** Records that a staff member opened a document or evidence (personal data). */
+  recordView(staffId: string, subject: string, what: string): Promise<Result<null>>;
   provider(): Promise<Result<ProviderRecord | null>>;
   setProvider(staffId: string, input: Record<string, unknown>): Promise<Result<Provider>>;
   inviteCompany(

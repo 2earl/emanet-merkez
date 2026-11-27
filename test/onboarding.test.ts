@@ -69,6 +69,9 @@ describe('onboarding', () => {
     expect(page).toContain('Tax certificate');
     expect(page).toContain('isn’t the signatory named in the details');
     expect(page).toContain('Approve and activate');
+    // The acceptance cleared by an earlier send-back is still listed.
+    expect(page).toContain('Earlier acceptances');
+    expect(page).toContain('efefefefefefefef');
   });
 
   it('lets someone other than the inviter approve, with a fresh second factor', async () => {
@@ -129,6 +132,9 @@ describe('onboarding', () => {
     expect(doc.headers.get('Content-Type')).toBe('application/pdf');
     expect(doc.headers.get('Content-Security-Policy')).toContain('sandbox');
     await doc.arrayBuffer();
+    expect(await callsOf('recordView')).toEqual([
+      ['support-1', 'onboarding:ob-signed', 'document d-1'],
+    ]);
     expect(
       (await request('/onboarding/ob-progress/documents/d-1', { headers: { Cookie: cookie } }))
         .status,

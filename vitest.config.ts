@@ -123,7 +123,11 @@ function onboarding(id, status, invitedBy, t) {
     contract_text: signed ? 'EMANET HİZMET SÖZLEŞMESİ' : null, signer_name: signed ? 'Ayşe Yılmaz' : null,
     signer_title: signed ? 'Operasyon Müdürü' : null, decision_reason: null,
     documents: signed ? [{ id: 'd-1', kind: 'signature_circular', file_ref: 'onboarding/' + id + '/d-1', sha256: 'cd'.repeat(32),
-      file_name: 'imza.pdf', content_type: 'application/pdf', size: 1200, uploaded_by: 'joiner-1', uploaded_at: t - 7200 }] : [] };
+      file_name: 'imza.pdf', content_type: 'application/pdf', size: 1200, uploaded_by: 'joiner-1', uploaded_at: t - 7200 }] : [],
+    acceptances: signed ? [
+      { contract_version: '2026-11-27-draft', contract_sha256: 'ef'.repeat(32), signer_name: 'Ayşe Yılmaz', signer_title: 'Müdür', signer_ip: '192.0.2.9', signed_at: t - 86400 },
+      { contract_version: '2026-11-27-draft', contract_sha256: 'ab'.repeat(32), signer_name: 'Ayşe Yılmaz', signer_title: 'Operasyon Müdürü', signer_ip: '192.0.2.9', signed_at: t - 3600 },
+    ] : [] };
 }
 seed();
 const log = (method, args) => s.calls.push([method, ...args]);
@@ -290,6 +294,7 @@ export class ControlApi extends WorkerEntrypoint {
       { code: '740', name: 'Hizmet Üretim Maliyeti', debit_kurus: 500000, credit_kurus: 0 },
     ]);
   }
+  async recordView(staffId, subject, what) { log('recordView', [staffId, subject, what]); return ok(null); }
   async provider() { return ok(s.provider); }
   async setProvider(staffId, input) {
     log('setProvider', [staffId, input]);

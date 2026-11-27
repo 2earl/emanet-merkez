@@ -558,5 +558,10 @@ export const tr: Catalog = {
     'The KEP address isn’t an email address.': 'KEP adresi geçerli bir e-posta adresi değil.',
     'The email for notices isn’t an email address.':
       'Bildirim e-postası geçerli bir e-posta adresi değil.',
+    'Earlier acceptances': 'Önceki onaylar',
+    Accepted: 'Onaylanma',
+    By: 'Onaylayan',
+    Version: 'Sürüm',
+    IP: 'IP',
   },
 };

@@ -163,6 +163,11 @@ export function registerOnboarding(app: Hono<AppEnv>, d: Deps): void {
     if (!item) return d.notFound(c);
     const object = await c.env.DOCUMENTS.get(item.file_ref);
     if (!object) return d.notFound(c);
+    await core(c.env).recordView(
+      d.uid(c),
+      `onboarding:${found.ok ? found.value.id : ''}`,
+      `document ${item.id}`,
+    );
     const type = object.httpMetadata?.contentType ?? '';
     const known = /^(application\/pdf|image\/jpeg|image\/png)$/.test(type);
     return new Response(object.body, {
