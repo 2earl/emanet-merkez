@@ -72,7 +72,7 @@ export function parseSetting(key: keyof Settings, value: string): number | null 
   const v = value.trim();
   if (!/^\d{1,5}$/.test(v)) return null;
   const n = Number(v);
-  return unit === 'hours' && n === 0 ? null : n;
+  return (unit === 'hours' || unit === 'days') && n === 0 ? null : n;
 }
 
 /** The payout rule form: a share or a fixed amount, with optional bounds. */

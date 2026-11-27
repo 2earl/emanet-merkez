@@ -107,6 +107,11 @@ export interface AgentRow {
   iban_verified: number;
   open_claims: number;
   deliveries: number;
+  /** The address the agent proved with a code. */
+  email?: string | null;
+  /** 1: an ID number is on record (as a keyed hash; the number isn't kept). */
+  id_given?: number;
+  birth_year?: number | null;
 }
 
 export interface PayoutRow {
@@ -200,6 +205,8 @@ export interface ReviewDetail {
     exif_lng: number | null;
     status: string;
     created_at: number;
+    /** 1: the file was deleted (a request, or its retention ended). */
+    erased?: number;
   }[];
   cases?: {
     id: string;
@@ -215,6 +222,106 @@ export interface ReviewDetail {
     nearest_place_m: number | null;
     agent_deliveries: number;
     agent_strikes: number;
+  };
+}
+
+export interface KycCheck {
+  kind:
+    | 'email'
+    | 'id_registry'
+    | 'id_nfc'
+    | 'liveness'
+    | 'video_call'
+    | 'iban'
+    | 'criminal_record'
+    | 'phone';
+  provider: string;
+  result: 'passed' | 'failed' | 'review';
+  reviewed_by: string | null;
+  created_at: number;
+}
+
+type Erased = 'no' | 'due' | 'yes';
+
+/** Everything held for one search term (emanet-core src/privacy.ts). */
+export interface Inventory {
+  vehicle: {
+    id: string;
+    plate: string | null;
+    vin: string | null;
+    cases: {
+      id: string;
+      partner: string;
+      external_ref: string;
+      status: string;
+      places: number;
+      addresses: number;
+    }[];
+  } | null;
+  agent: {
+    user_id: string;
+    status: string;
+    legal_name: string | null;
+    email: string | null;
+    phone: string | null;
+    sightings: number;
+    payouts: number;
+  } | null;
+  evidence: {
+    id: string;
+    claim_id: string;
+    kind: EvidenceKind;
+    about: 'vehicle' | 'document';
+    created_at: number;
+    delivered: boolean;
+    erased: Erased;
+  }[];
+  onboardings: {
+    id: string;
+    company: string;
+    contact_name: string;
+    contact_email: string;
+    status: string;
+    documents: { id: string; kind: string; file_name: string; erased: Erased }[];
+  }[];
+}
+
+export interface PrivacyRequest {
+  id: string;
+  kind: 'access' | 'erasure' | 'correction' | 'objection';
+  subject_kind: 'agent' | 'vehicle' | 'contact' | 'other';
+  subject_ref: string;
+  channel: string;
+  note: string | null;
+  received_at: number;
+  due_at: number;
+  status: 'open' | 'done' | 'refused';
+  outcome: string | null;
+  closed_at: number | null;
+}
+
+export interface OpsOverview {
+  events: {
+    id: string;
+    at: number;
+    source: string;
+    level: string;
+    event: string;
+    detail: string;
+  }[];
+  heartbeats: {
+    name: string;
+    ok_at: number | null;
+    failed_at: number | null;
+    error: string | null;
+  }[];
+  last_day: { source: string; level: string; n: number }[];
+  queues: {
+    oldest_review_at: number | null;
+    files_due: number;
+    requests_open: number;
+    requests_overdue: number;
+    agents_waiting: number;
   };
 }
 
@@ -243,7 +350,8 @@ export type Settings = Record<
   | 'dual_approval_kurus'
   | 'withholding_individual_bp'
   | 'withholding_sole_trader_bp'
-  | 'withholding_company_bp',
+  | 'withholding_company_bp'
+  | 'evidence_retention_days',
   number
 >;
 
@@ -376,6 +484,8 @@ export interface ProviderRecord {
 }
 
 export interface ControlApi {
+  /** An unexpected error: a route pattern and an error's name, for staff's System page. */
+  reportError(event: string, detail: string): Promise<void>;
   /** Records that a staff member opened a document or evidence (personal data). */
   recordView(staffId: string, subject: string, what: string): Promise<Result<null>>;
   provider(): Promise<Result<ProviderRecord | null>>;
@@ -413,19 +523,6 @@ export interface ControlApi {
       fields: FieldRow[];
     }>
   >;
-  createPartner(
-    staffId: string,
-    input: {
-      orgId: string;
-      kind: PartnerKind;
-      legalName: string;
-      vkn?: string;
-      taxOffice?: string;
-      kepAddress?: string;
-      eInvoice?: boolean;
-      reconfirmDays?: number;
-    },
-  ): Promise<Result<{ id: string }>>;
   updatePartner(
     staffId: string,
     partnerId: string,
@@ -489,6 +586,39 @@ export interface ControlApi {
     invoiceId: string,
     input: { number: string; uuid?: string | null },
   ): Promise<Result<null>>;
+  kycChecks(agentId: string): Promise<Result<KycCheck[]>>;
+  recordVideoCall(staffId: string, agentId: string, passed: boolean): Promise<Result<null>>;
+  privacySearch(staffId: string, term: string): Promise<Result<Inventory>>;
+  eraseEvidence(staffId: string, evidenceId: string, reason: string): Promise<Result<null>>;
+  eraseDocument(staffId: string, documentId: string, reason: string): Promise<Result<null>>;
+  redactCasePlaces(
+    staffId: string,
+    caseId: string,
+    reason: string,
+  ): Promise<Result<{ places: number }>>;
+  privacyRequests(): Promise<Result<PrivacyRequest[]>>;
+  openPrivacyRequest(
+    staffId: string,
+    input: {
+      kind: string;
+      subjectKind: string;
+      subjectRef: string;
+      channel: string;
+      note?: string;
+      receivedAt?: number;
+    },
+  ): Promise<Result<{ id: string; due_at: number }>>;
+  closePrivacyRequest(
+    staffId: string,
+    requestId: string,
+    input: { status: string; outcome: string },
+  ): Promise<Result<null>>;
+  filesDue(
+    limit?: number,
+  ): Promise<Result<{ file_ref: string; bucket: 'evidence' | 'documents' }[]>>;
+  filesErased(refs: string[]): Promise<Result<{ erased: number }>>;
+  ops(): Promise<Result<OpsOverview>>;
+  heartbeat(name: string, error: string | null): Promise<void>;
   audit(
     staffId: string,
     query: { subject?: string; actor?: string; before?: number; limit?: number },

@@ -12,9 +12,14 @@
   "workers_dev": false,
   "preview_urls": false,
 
-  // Invocation logs could record partner, agent and payment data.
+  // Logs, traces and Issues in Cloudflare (emanet-core docs/DESIGN.md §12). The app logs one
+  // structured line per request: route pattern, status, duration. Never a plate, an address or a
+  // person; invocation logs (full URLs) stay off.
   "observability": {
-    "enabled": false,
+    "enabled": true,
+    "logs": { "enabled": true, "invocation_logs": false, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 },
+    "issues": { "enabled": true },
   },
 
   "vars": {
@@ -54,7 +59,8 @@
 
   // Agents' photos and reports, read by staff before confirming a delivery (written by Emanet
   // Saha). EU jurisdiction, like the databases.
-  // Agents' evidence, and companies' onboarding documents; read only, to show them to staff.
+  // Agents' evidence, and companies' onboarding documents: shown to staff, and deleted when the
+  // core says a file must go (a request, a deleted account, the end of its retention).
   "r2_buckets": [
     { "binding": "EVIDENCE", "bucket_name": "emanet-evidence", "jurisdiction": "eu" },
     { "binding": "DOCUMENTS", "bucket_name": "emanet-documents", "jurisdiction": "eu" },
@@ -69,4 +75,9 @@
       "migrations_dir": "migrations",
     },
   ],
+
+  // Every ten minutes: delete the files the core has queued for erasure (src/index.ts).
+  "triggers": {
+    "crons": ["*/10 * * * *"],
+  },
 }

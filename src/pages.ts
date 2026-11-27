@@ -1,6 +1,10 @@
 import type {
   AgentRow,
   AuditRow,
+  Inventory,
+  KycCheck,
+  OpsOverview,
+  PrivacyRequest,
   BalanceRow,
   EvidenceKind,
   FieldRow,
@@ -17,7 +21,6 @@ import type {
   StaffRole,
   UninvoicedRow,
 } from './core';
-import { PARTNER_KINDS } from './core';
 import { currentLocale, languageSwitcher } from './i18n';
 
 /**
@@ -48,7 +51,16 @@ const MARK =
   '</svg>';
 
 export type Section =
-  'home' | 'reviews' | 'onboarding' | 'partners' | 'agents' | 'money' | 'settings' | 'audit';
+  | 'home'
+  | 'reviews'
+  | 'onboarding'
+  | 'partners'
+  | 'agents'
+  | 'money'
+  | 'settings'
+  | 'audit'
+  | 'privacy'
+  | 'system';
 
 export interface Nav {
   signedIn: boolean;
@@ -100,6 +112,8 @@ export function layout(title: string, nav: Nav, body: string): string {
         ${link('money', '/money', 'Money')}
         ${link('settings', '/settings', 'Settings')}
         ${link('audit', '/audit', 'Audit')}
+        ${link('privacy', '/privacy', 'Privacy')}
+        ${link('system', '/system', 'System')}
       </nav>`
     : '';
   const who = nav.signedIn
@@ -345,8 +359,10 @@ export function reviewDetail(
       evidence.length === 0
         ? '<p class="panel">No evidence uploaded yet.</p>'
         : `<ul class="evidence">${evidence
-            .map(
-              (e) => `<li>
+            .map((e) =>
+              e.erased === 1
+                ? `<li><span>${EVIDENCE_LABEL[e.kind]}</span><span class="status expired">File deleted</span></li>`
+                : `<li>
                 <a href="/reviews/${attr(r.item.id)}/evidence/${attr(e.id)}"><img src="/reviews/${attr(r.item.id)}/evidence/${attr(e.id)}" alt="${attr(EVIDENCE_LABEL[e.kind])}" loading="lazy"></a>
                 <span>${EVIDENCE_LABEL[e.kind]}</span>
                 <span class="hint">Taken ${moment(e.exif_time)} · received ${moment(e.created_at)}</span>
@@ -480,16 +496,10 @@ const PARTNER_STATUS: Record<PartnerRow['status'], string> = {
 const partnerStatus = (s: PartnerRow['status']) =>
   `<span class="status ${s}">${PARTNER_STATUS[s]}</span>`;
 
-export function partnerList(
-  nav: Nav,
-  partners: PartnerRow[],
-  canChange: boolean,
-  errorText: string | null,
-  values: Record<string, string>,
-): string {
+export function partnerList(nav: Nav, partners: PartnerRow[]): string {
   const table =
     partners.length === 0
-      ? '<p class="panel">No partners yet.</p>'
+      ? '<p class="panel">No partners yet. A company becomes a partner when its onboarding is approved.</p>'
       : `<table><thead><tr><th>Partner</th><th>Kind</th><th>Status</th><th class="num">Open cases</th><th class="num">Delivered</th></tr></thead><tbody>${partners
           .map(
             (p) => `<tr>
@@ -501,24 +511,13 @@ export function partnerList(
             </tr>`,
           )
           .join('')}</tbody></table>`;
-  const form = canChange
-    ? `<h2>Add a partner</h2>
-       <p class="hint">First create the organization in 2earl login and invite its people. Then add it here with the organization’s ID. It starts as invited: set its price list, then activate it.</p>
-       ${error(errorText)}
-       <form method="post" action="/partners" class="stack">
-         <div class="grid2">
-           <label>Login organization ID <input name="org_id" required maxlength="64" autocomplete="off" value="${attr(values.org_id ?? '')}"></label>
-           <label>Kind <select name="kind">${PARTNER_KINDS.map(
-             (k) =>
-               `<option value="${k}"${values.kind === k ? ' selected' : ''}>${KIND_LABEL[k]}</option>`,
-           ).join('')}</select></label>
-         </div>
-         <label>Legal name <input name="legal_name" required maxlength="200" value="${attr(values.legal_name ?? '')}"></label>
-         ${taxFields(values)}
-         <div><button type="submit">Add partner</button></div>
-       </form>`
-    : '';
-  return layout('Partners', { ...nav, current: 'partners' }, `<h1>Partners</h1>${table}${form}`);
+  return layout(
+    'Partners',
+    { ...nav, current: 'partners' },
+    `<h1>Partners</h1>
+     <p class="lede">A company becomes a partner only through its onboarding: it accepts the agreement, and a second staff member approves it. <a href="/onboarding">Invite a company</a></p>
+     ${table}`,
+  );
 }
 
 function taxFields(values: Record<string, string>): string {
@@ -775,9 +774,75 @@ export function agentList(
   );
 }
 
+const KYC_LABEL: Record<KycCheck['kind'], string> = {
+  email: 'Email address',
+  id_registry: 'ID number against the population registry',
+  video_call: 'Video call with the ID card',
+  iban: 'IBAN in their own name',
+  phone: 'Phone by SMS',
+  id_nfc: 'ID card chip (NFC)',
+  liveness: 'Liveness check',
+  criminal_record: 'Criminal record certificate',
+};
+const KYC_RESULT: Record<KycCheck['result'], string> = {
+  passed: 'Passed',
+  failed: 'Failed',
+  review: 'Check it yourself',
+};
+
+/** What is checked before an agent can be made active, and where each check stands. */
+function kycList(a: AgentRow, checks: KycCheck[]): string {
+  const of = (kind: KycCheck['kind']) => checks.find((c) => c.kind === kind);
+  const stamp = (state: 'passed' | 'failed' | 'review' | 'none') =>
+    state === 'none'
+      ? '<span class="status pending">Not done</span>'
+      : `<span class="status ${state === 'passed' ? 'active' : state === 'failed' ? 'rejected' : 'pending'}">${KYC_RESULT[state]}</span>`;
+  const registry = of('id_registry');
+  const call = of('video_call');
+  const rows: [string, string, string][] = [
+    [
+      KYC_LABEL.email,
+      stamp(a.email ? 'passed' : 'none'),
+      a.email ? data(a.email) : 'The agent proves it with a code we mail.',
+    ],
+    [
+      KYC_LABEL.id_registry,
+      stamp(!a.id_given ? 'none' : (registry?.result ?? 'review')),
+      !a.id_given
+        ? 'The agent hasn’t given an ID number.'
+        : registry?.result === 'passed'
+          ? 'Number, name and birth year belong together. The number itself isn’t kept.'
+          : 'The registry didn’t answer. Compare the number on the card with what the agent reads out on the call.',
+    ],
+    [
+      KYC_LABEL.video_call,
+      stamp(call?.result ?? 'none'),
+      call ? moment(call.created_at) : 'Record it below after the call.',
+    ],
+    [
+      KYC_LABEL.iban,
+      stamp(a.iban_verified ? 'passed' : 'none'),
+      a.iban_verified ? 'Verified.' : 'Bank name check or a test transfer, then mark it verified.',
+    ],
+    [
+      KYC_LABEL.phone,
+      stamp('none'),
+      'By SMS, once the SMS provider is set up. Until then the call to this number is the check.',
+    ],
+  ];
+  return `<h2>Identity checks</h2>
+    <ol class="checklist">${rows
+      .map(
+        ([label, state, note]) =>
+          `<li><strong>${label}</strong>${state}<span class="hint">${note}</span></li>`,
+      )
+      .join('')}</ol>`;
+}
+
 export function agentDetail(
   nav: Nav,
   a: AgentRow,
+  checks: KycCheck[],
   canChange: boolean,
   fresh: boolean,
   noticeText: string | null,
@@ -806,6 +871,16 @@ export function agentDetail(
         : confirmFirst(path)
       : '';
   const needsConfirm = canChange && !fresh;
+  const call =
+    canChange && fresh && (a.status === 'kyc_pending' || a.status === 'suspended')
+      ? `<form method="post" action="${path}/video-call" class="stack">
+           <label class="check"><input type="checkbox" name="seen" value="1" required> On a video call I saw this person hold their Turkish ID card: the photo is them, and the name is the name above.</label>
+           <div class="actions">
+             <button type="submit" name="result" value="passed">Record the call as passed</button>
+             <button class="secondary" type="submit" name="result" value="failed">It didn’t match</button>
+           </div>
+         </form>`
+      : '';
   const status =
     canChange && fresh
       ? `<h2>Change status</h2>
@@ -828,6 +903,8 @@ export function agentDetail(
      ${error(errorText)}
      <div class="panel"><dl class="facts">
        <dt>Mobile</dt><dd>${a.phone ? `<a href="tel:${attr(a.phone)}" translate="no">${esc(a.phone)}</a>` : '—'}</dd>
+       <dt>Email</dt><dd>${a.email ? data(a.email) : '—'}</dd>
+       <dt>Birth year</dt><dd>${a.birth_year ? data(String(a.birth_year)) : '—'}</dd>
        <dt>City</dt><dd>${a.city ? data(a.city) : '—'}</dd>
        <dt>IBAN</dt><dd>${a.iban ? data(a.iban) : '—'} ${a.iban ? (a.iban_verified ? '<span class="status active">Verified</span>' : '<span class="status kyc_pending">Not verified</span>') : ''}</dd>
        <dt>Tax</dt><dd>${TAX_LABEL[a.tax_profile] ?? data(a.tax_profile)}${a.vkn ? ` · ${data(a.vkn)}` : ''}</dd>
@@ -837,8 +914,10 @@ export function agentDetail(
        <dt>Deliveries</dt><dd translate="no">${String(a.deliveries)}</dd>
        <dt>Strikes</dt><dd translate="no">${String(a.strikes)}</dd>
      </dl></div>
+     ${kycList(a, checks)}
      ${check}
      ${needsConfirm ? confirmFirst(path) : ''}
+     ${call}
      ${iban}
      ${status}`,
   );
@@ -1072,12 +1151,234 @@ export function auditPage(
   );
 }
 
+// ---- Privacy --------------------------------------------------------------------------------------
+
+const REQUEST_KIND: Record<PrivacyRequest['kind'], string> = {
+  access: 'What do you hold about me?',
+  erasure: 'Delete my data',
+  correction: 'Correct my data',
+  objection: 'Objection',
+};
+const SUBJECT_KIND: Record<PrivacyRequest['subject_kind'], string> = {
+  agent: 'An agent',
+  vehicle: 'A vehicle’s owner (through the partner)',
+  contact: 'A company’s contact person',
+  other: 'Someone else',
+};
+const ERASED_LABEL = { no: '', due: 'Being deleted', yes: 'Deleted' } as const;
+const ABOUT_LABEL = {
+  vehicle: 'Shows a vehicle and its plate',
+  document: 'A document that can name people',
+} as const;
+
+export interface PrivacyView {
+  term: string;
+  found: Inventory | null;
+  requests: PrivacyRequest[];
+}
+
+export function privacyPage(
+  nav: Nav,
+  v: PrivacyView,
+  canChange: boolean,
+  fresh: boolean,
+  now: number,
+  noticeText: string | null,
+  errorText: string | null,
+): string {
+  const act = canChange && fresh;
+  const eraseForm = (action: string, label: string) =>
+    act
+      ? `<form method="post" action="${action}" class="inline">
+           <input type="hidden" name="q" value="${attr(v.term)}">
+           <label class="sr">Reason <input name="reason" required maxlength="200" placeholder="Reason (request no.)" autocomplete="off"></label>
+           <button class="secondary" type="submit">${label}</button></form>`
+      : '';
+  const erased = (state: 'no' | 'due' | 'yes') =>
+    state === 'no'
+      ? ''
+      : `<span class="status ${state === 'due' ? 'due' : 'expired'}">${ERASED_LABEL[state]}</span>`;
+  const f = v.found;
+  const nothing = f && !f.vehicle && !f.agent && f.onboardings.length === 0;
+  const vehicle = f?.vehicle
+    ? `<h3>Vehicle ${plate(f.vehicle.plate)}</h3>
+       <table><thead><tr><th>Partner</th><th>Their reference</th><th>Status</th><th class="num">Places with an address</th><th></th></tr></thead><tbody>${f.vehicle.cases
+         .map(
+           (
+             c,
+           ) => `<tr><td>${data(c.partner)}</td><td>${data(c.external_ref)}</td><td>${data(c.status)}</td>
+             <td class="num" translate="no">${String(c.addresses)} / ${String(c.places)}</td>
+             <td>${c.addresses > 0 && c.status !== 'active' && c.status !== 'pending_identity' ? eraseForm(`/privacy/cases/${attr(c.id)}/erase`, 'Erase the addresses') : ''}</td></tr>`,
+         )
+         .join('')}</tbody></table>
+       <p class="hint">For a debtor’s data the partner is the controller: pass the request to the partner and act on its instruction. An open case’s addresses are changed or withdrawn by the partner.</p>`
+    : '';
+  const agent = f?.agent
+    ? `<h3>Agent</h3>
+       <div class="panel"><dl class="facts">
+         <dt>Name</dt><dd>${f.agent.legal_name ? data(f.agent.legal_name) : '—'}</dd>
+         <dt>Email</dt><dd>${f.agent.email ? data(f.agent.email) : '—'}</dd>
+         <dt>Mobile</dt><dd>${f.agent.phone ? data(f.agent.phone) : '—'}</dd>
+         <dt>Sightings (locations)</dt><dd translate="no">${String(f.agent.sightings)}</dd>
+         <dt>Payouts</dt><dd translate="no">${String(f.agent.payouts)}</dd>
+       </dl>
+       <p><a href="/agents/${attr(f.agent.user_id)}">Open the agent</a></p>
+       <p class="hint">An agent deletes their account themselves in their 2earl account: profile, ID hash, email, phone and the photos of claims that delivered nothing go at once. Payouts and the books stay for the legal retention period.</p></div>`
+    : '';
+  const evidence =
+    f && f.evidence.length > 0
+      ? `<h3>Photos</h3>
+         <table><thead><tr><th>Kind</th><th>Personal data</th><th>Taken</th><th>Kept because</th><th></th></tr></thead><tbody>${f.evidence
+           .map(
+             (
+               e,
+             ) => `<tr><td>${EVIDENCE_LABEL[e.kind]}</td><td>${ABOUT_LABEL[e.about]}</td><td>${moment(e.created_at)}</td>
+               <td>${e.delivered ? 'Proof of a delivery (commercial record)' : 'No delivery: deleted after 30 days'}</td>
+               <td>${e.erased === 'no' ? eraseForm(`/privacy/evidence/${attr(e.id)}/erase`, 'Delete the file') : erased(e.erased)}</td></tr>`,
+           )
+           .join('')}</tbody></table>`
+      : '';
+  const onboardings = (f?.onboardings ?? [])
+    .map(
+      (o) => `<h3>${data(o.company)}</h3>
+        <p>${data(o.contact_name)} · ${data(o.contact_email)} · <a href="/onboarding/${attr(o.id)}">Open the onboarding</a></p>
+        ${
+          o.documents.length === 0
+            ? ''
+            : `<table><thead><tr><th>Document</th><th>File</th><th></th></tr></thead><tbody>${o.documents
+                .map(
+                  (d) => `<tr><td>${data(d.kind)}</td><td>${data(d.file_name)}</td>
+                    <td>${d.erased === 'no' ? eraseForm(`/privacy/documents/${attr(d.id)}/erase`, 'Delete the file') : erased(d.erased)}</td></tr>`,
+                )
+                .join('')}</tbody></table>`
+        }`,
+    )
+    .join('');
+  const requests =
+    v.requests.length === 0
+      ? '<p class="panel">No requests recorded.</p>'
+      : `<table><thead><tr><th>Received</th><th>Request</th><th>How it arrived</th><th>About</th><th>Who they are</th><th>Answer by</th><th>Status</th><th>What was done</th><th></th></tr></thead><tbody>${v.requests
+          .map((r) => {
+            const overdue = r.status === 'open' && r.due_at < now;
+            return `<tr${overdue ? ' class="late"' : ''}>
+              <td>${day(r.received_at)}</td>
+              <td>${REQUEST_KIND[r.kind]}</td>
+              <td>${data(r.channel)}</td>
+              <td><a href="/privacy?q=${encodeURIComponent(r.subject_ref)}" translate="no">${esc(r.subject_ref)}</a></td>
+              <td>${SUBJECT_KIND[r.subject_kind]}</td>
+              <td>${day(r.due_at)}</td>
+              <td><span class="status ${overdue ? 'overdue' : r.status}">${overdue ? 'Overdue' : r.status === 'open' ? 'Open' : r.status === 'done' ? 'Answered' : 'Refused'}</span></td>
+              <td>${r.outcome ? data(r.outcome) : ''}</td>
+              <td>${
+                r.status === 'open' && canChange
+                  ? `<form method="post" action="/privacy/requests/${attr(r.id)}/close" class="inline">
+                      <label class="sr">What was done <input name="outcome" required maxlength="1000" placeholder="What was done" autocomplete="off"></label>
+                      <button type="submit" name="status" value="done">Answered</button>
+                      <button class="secondary" type="submit" name="status" value="refused">Refused</button></form>`
+                  : ''
+              }</td></tr>`;
+          })
+          .join('')}</tbody></table>`;
+  const option = (map: Record<string, string>) =>
+    Object.entries(map)
+      .map(([value, label]) => `<option value="${value}">${label}</option>`)
+      .join('');
+  return layout(
+    'Privacy',
+    { ...nav, current: 'privacy' },
+    `${notice(noticeText)}<h1>Privacy</h1>
+     <p class="lede">Find everything Emanet holds about a person, and remove what a request or the law says must go. Every search and every deletion is recorded.</p>
+     ${error(errorText)}
+     <form method="get" action="/privacy" class="inline">
+       <label class="sr">Search <input name="q" required minlength="3" maxlength="254" placeholder="Plate, chassis number, agent ID or email" value="${attr(v.term)}" autocomplete="off"></label>
+       <button type="submit">Search</button>
+     </form>
+     ${canChange && !fresh && f ? confirmFirst(`/privacy?q=${v.term}`) : ''}
+     ${nothing ? '<p class="panel">Nothing is held for this.</p>' : ''}
+     ${vehicle}${agent}${evidence}${onboardings}
+     <h2>Requests</h2>
+     <p class="hint">Record every request the day it arrives (KVKK art. 13: answered within 30 days, free of charge).</p>
+     ${requests}
+     ${
+       canChange
+         ? `<h3>Record a request</h3>
+            <form method="post" action="/privacy/requests" class="stack">
+              <div class="grid2">
+                <label>What they ask <select name="kind">${option(REQUEST_KIND)}</select></label>
+                <label>Who they are <select name="subject_kind">${option(SUBJECT_KIND)}</select></label>
+                <label>Search term for them <input name="subject_ref" required maxlength="254" placeholder="Plate, chassis number, agent ID or email" autocomplete="off"></label>
+                <label>How it arrived <input name="channel" required maxlength="60" placeholder="Email, KEP, post, partner" autocomplete="off"></label>
+                <label>Received on <input name="received_at" type="date"></label>
+                <label>Note <input name="note" maxlength="1000" autocomplete="off"></label>
+              </div>
+              <div><button type="submit">Record the request</button></div>
+            </form>`
+         : ''
+     }`,
+  );
+}
+
+// ---- System ---------------------------------------------------------------------------------------
+
+/** Jobs run every 5 or 10 minutes: one silent for longer than this has stopped. */
+const STALE_SECONDS = 30 * 60;
+
+export function systemPage(nav: Nav, o: OpsOverview, now: number): string {
+  const jobs =
+    o.heartbeats.length === 0
+      ? '<p class="panel">No job has reported yet.</p>'
+      : `<table><thead><tr><th>Job</th><th>Last ran</th><th>State</th><th>Last failure</th></tr></thead><tbody>${o.heartbeats
+          .map((h) => {
+            const failing = h.failed_at !== null && (h.ok_at === null || h.failed_at >= h.ok_at);
+            const stale = h.ok_at === null || now - h.ok_at > STALE_SECONDS;
+            return `<tr${failing || stale ? ' class="late"' : ''}><td>${data(h.name)}</td><td>${moment(h.ok_at)}</td>
+              <td><span class="status ${failing ? 'failed' : stale ? 'due' : 'active'}">${failing ? 'Failing' : stale ? 'Not running' : 'Running'}</span></td>
+              <td>${h.failed_at === null ? '—' : `${moment(h.failed_at)} ${h.error ? data(h.error) : ''}`}</td></tr>`;
+          })
+          .join('')}</tbody></table>`;
+  const events =
+    o.events.length === 0
+      ? '<p class="panel">No errors or warnings in the last 30 days.</p>'
+      : `<table><thead><tr><th>When</th><th>Where</th><th>Level</th><th>What</th><th>Error</th></tr></thead><tbody>${o.events
+          .map(
+            (e) => `<tr><td>${moment(e.at)}</td><td>${data(e.source)}</td>
+              <td><span class="status ${e.level === 'error' ? 'failed' : 'pending'}">${data(e.level)}</span></td>
+              <td>${data(e.event)}</td><td>${e.detail ? data(e.detail) : '—'}</td></tr>`,
+          )
+          .join('')}</tbody></table>`;
+  const errors = o.last_day.filter((d) => d.level === 'error').reduce((sum, d) => sum + d.n, 0);
+  const tile = (count: number | string, label: string, href?: string) =>
+    href
+      ? `<a href="${href}"><strong translate="no">${String(count)}</strong><span>${label}</span></a>`
+      : `<div><strong translate="no">${String(count)}</strong><span>${label}</span></div>`;
+  const waiting =
+    o.queues.oldest_review_at === null
+      ? '—'
+      : `${String(Math.max(0, Math.round((now - o.queues.oldest_review_at) / 3600)))} h`;
+  return layout(
+    'System',
+    { ...nav, current: 'system' },
+    `<h1>System</h1>
+     <p class="lede">Whether Emanet’s jobs are running and what has failed. Errors are also mailed to staff, at most once an hour. Full logs and traces are in Cloudflare (Workers → Observability), kept seven days; none of it holds personal data.</p>
+     <div class="counts">
+       ${tile(errors, 'Errors in the last 24 hours')}
+       ${tile(waiting, 'Oldest review waiting', '/reviews')}
+       ${tile(o.queues.agents_waiting, 'Agents waiting for KYC', '/agents?status=kyc_pending')}
+       ${tile(o.queues.requests_open, 'Privacy requests open', '/privacy')}
+       ${tile(o.queues.requests_overdue, 'Privacy requests overdue', '/privacy')}
+       ${tile(o.queues.files_due, 'Files waiting to be deleted')}
+     </div>
+     <h2>Jobs</h2>${jobs}
+     <h2>Errors and warnings</h2>${events}`,
+  );
+}
+
 // ---- Settings -------------------------------------------------------------------------------------
 
 /** How each setting is shown and entered: hours, a count, a percentage or lira. */
 export const SETTING_FORMS: Record<
   keyof Settings,
-  { label: string; unit: 'hours' | 'count' | 'percent' | 'lira'; hint: string }
+  { label: string; unit: 'hours' | 'count' | 'percent' | 'lira' | 'days'; hint: string }
 > = {
   claim_hours: {
     label: 'Claim lasts',
@@ -1119,6 +1420,11 @@ export const SETTING_FORMS: Record<
     label: 'Withholding for companies',
     unit: 'percent',
     hint: 'Usually none: the company invoices Emanet.',
+  },
+  evidence_retention_days: {
+    label: 'Keep a delivery’s photos and a partner’s documents for',
+    unit: 'days',
+    hint: 'Commercial records are kept ten years (3650 days). After that the files are deleted.',
   },
 };
 
@@ -1176,7 +1482,7 @@ export function settingsPage(
              </dl></div>`
            : ''
      }`;
-  const unit = { hours: 'hours', count: '', percent: '%', lira: '₺' } as const;
+  const unit = { hours: 'hours', days: 'days', count: '', percent: '%', lira: '₺' } as const;
   const rows = (Object.keys(SETTING_FORMS) as (keyof Settings)[])
     .map((key) => {
       const f = SETTING_FORMS[key];
@@ -1189,7 +1495,9 @@ export function settingsPage(
               ? lira(settings[key])
               : f.unit === 'hours'
                 ? `${data(settingValue(key, settings[key]))} hours`
-                : data(`${settingValue(key, settings[key])}${f.unit === 'percent' ? ' %' : ''}`)
+                : f.unit === 'days'
+                  ? `${data(settingValue(key, settings[key]))} days`
+                  : data(`${settingValue(key, settings[key])}${f.unit === 'percent' ? ' %' : ''}`)
           }</dd>`;
     })
     .join('');

@@ -60,6 +60,12 @@ describe('Turkish', () => {
         '/money/ledger',
         '/settings',
         '/audit',
+        '/privacy',
+        '/privacy?q=34ABC123',
+        '/privacy?q=ali@example.com',
+        '/privacy?q=nobody@example.com',
+        '/privacy?q=ab',
+        '/system',
         '/audit?subject=case:c-1',
         '/audit?subject=nothing:here',
         '/audit?subject=%3Cx%3E',
@@ -85,13 +91,22 @@ describe('Turkish', () => {
     await send('/reviews/r-vin/reject', support, { reason: '' });
     await send('/reviews/r-del/deliver', support);
     await send('/reviews/r-del/dismiss', admin, { reason: '' });
+    await send('/agents/agent-1/video-call', admin, {});
+    await send('/agents/agent-1/video-call', admin, { seen: '1', result: 'failed' });
+    await get('/agents/agent-1', admin);
+    await get('/agents/agent-1?done=call_recorded', admin);
+    await send('/privacy/evidence/e-1/erase', admin, { reason: '' });
+    await send('/privacy/cases/c-5/erase', admin, { reason: 'x' });
+    await send('/privacy/requests', admin, {});
+    await send('/privacy/documents/d-1/erase', admin, { reason: 'x', q: 'ali@example.com' });
+    await get('/privacy?q=ali@example.com', admin);
+    for (const done of ['erased', 'redacted', 'request_opened', 'request_closed'])
+      await get(`/privacy?done=${done}`, admin);
+    await send('/partners/p-1/status', admin, { status: 'active' });
     await send('/money/invoices/i-1/number', admin, { number: '!' });
     await send('/money/invoices/i-1/number', admin, { number: 'EMA2026000000009' });
     await get('/money', admin);
     await send('/agents/agent-1/status', admin, { status: 'active', reason: 'x' });
-    await send('/partners', support, {});
-    await send('/partners', admin, { org_id: '' });
-    await send('/partners', admin, { org_id: 'org-1', legal_name: 'X', reconfirm_days: '14' });
     await send('/partners/p-1', admin, { legal_name: 'X', vkn: '1', reconfirm_days: '14' });
     await send('/partners/p-1', admin, { legal_name: 'X', vkn: '', reconfirm_days: '500' });
     await send('/partners/p-1/prices', admin, { default: '', rules: '' });
@@ -138,9 +153,12 @@ describe('Turkish', () => {
     await send('/settings/payout-rule', admin, { share: '5', fixed: '', min: '9', max: '1' });
     await send('/reviews/r-del/deliver', admin);
     await get('/reviews/r-del', admin);
-    await post('/partners', admin, { org_id: 'x' }, { ...tr, Origin: 'https://evil.example' }).then(
-      (r) => r.text(),
-    );
+    await post(
+      '/partners/p-1/status',
+      admin,
+      { status: 'x' },
+      { ...tr, Origin: 'https://evil.example' },
+    ).then((r) => r.text());
 
     // Onboarding: every state, every action, and their errors.
     await get('/onboarding', admin);
