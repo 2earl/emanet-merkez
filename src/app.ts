@@ -44,6 +44,7 @@ import {
   pickLocale,
   withLocale,
 } from './i18n';
+import { registerOnboarding } from './onboarding';
 import * as pages from './pages';
 
 /** Emanet Merkez: the 2earl staff console (emanet-core docs/DESIGN.md §7). */
@@ -85,6 +86,17 @@ const ERROR_TEXT: Record<string, string> = {
   iban_not_verified: 'The agent’s IBAN isn’t verified yet. Verify it on the agent’s page first.',
   iban_changed: 'The agent changed their IBAN since this page was opened. Check the new one.',
   conflict_retry: 'Someone changed this at the same moment. Try again.',
+  missing_company: 'Enter the company’s name.',
+  invalid_kind: 'Choose a kind.',
+  missing_contact: 'Enter the contact’s name.',
+  invalid_email: 'The contact email isn’t an email address.',
+  invalid_locale: 'Choose a language.',
+  already_invited: 'This address already has an open invitation.',
+  not_open: 'This invitation is closed.',
+  sent_recently: 'A link went out less than ten minutes ago.',
+  not_signed: 'The company hasn’t accepted the agreement (or it was decided already).',
+  incomplete: 'The company’s organization, details or fees are missing.',
+  four_eyes: 'You invited this company, so another admin must approve it.',
 };
 /** The core's detail says which part was wrong; only where it helps the reader. */
 const WITH_DETAIL = new Set(['missing_evidence', 'invalid_price_list', 'invalid_payout_rule']);
@@ -103,10 +115,17 @@ const DONE: Record<string, string> = {
   approved: 'Payout approved. Send it from the bank, then mark it as sent.',
   waiting: 'Payout ordered. A second admin must approve it.',
   sent: 'Marked as sent.',
+  invited: 'Invitation sent.',
+  invited_unsent: 'Saved, but the email didn’t go out. Send a new link.',
+  resent: 'A new link was sent.',
+  returned: 'Sent back. The contact is told what to change.',
+  onboarded: 'Approved. The partner is active and the contact is told.',
+  declined: 'Rejected. The contact is told why.',
+  cancelled: 'Cancelled.',
 };
 const done = (c: AppContext) => DONE[c.req.query('done') ?? ''] ?? null;
 
-const SECTIONS = ['/reviews', '/partners', '/agents', '/money', '/settings'];
+const SECTIONS = ['/reviews', '/onboarding', '/partners', '/agents', '/money', '/settings'];
 
 export function createApp(now: () => number) {
   const app = new Hono<AppEnv>();
@@ -155,7 +174,15 @@ export function createApp(now: () => number) {
     }
     await next();
     c.res = new Response(c.res.body, c.res);
+    // A route may tighten the policy (a document gets `sandbox` too); it never loosens it.
+    const extra = c.res.headers.get('Content-Security-Policy');
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) c.res.headers.set(name, value);
+    if (extra === 'sandbox') {
+      c.res.headers.set(
+        'Content-Security-Policy',
+        `${SECURITY_HEADERS['Content-Security-Policy'] ?? ''}; sandbox`,
+      );
+    }
     if (!c.res.headers.has('Cache-Control')) c.res.headers.set('Cache-Control', 'no-store');
   });
 
@@ -228,12 +255,13 @@ export function createApp(now: () => number) {
   app.use('/', async (c: AppContext, next) => (c.get('session') ? staffGate(c, next) : next()));
   app.get('/', async (c) => {
     if (!c.get('session')) return c.html(pages.home());
-    const [queue, uninvoiced, ready, approved, waiting] = await Promise.all([
+    const [queue, uninvoiced, ready, approved, waiting, signed] = await Promise.all([
       core(c.env).reviewQueue(500),
       core(c.env).uninvoiced(),
       core(c.env).payouts('ready'),
       core(c.env).payouts('approved'),
       core(c.env).agents('kyc_pending'),
+      core(c.env).onboardings('signed'),
     ]);
     const reviews = { delivery: 0, missing_vin: 0, plate_conflict: 0 };
     for (const item of unwrap(queue)) reviews[item.kind]++;
@@ -246,6 +274,7 @@ export function createApp(now: () => number) {
           payoutsReady: unwrap(ready).length,
           payoutsApproved: unwrap(approved).length,
           agentsWaiting: unwrap(waiting).length,
+          onboardingsSigned: unwrap(signed).length,
         },
         c.get('now'),
       ),
@@ -409,6 +438,26 @@ export function createApp(now: () => number) {
         'Cache-Control': 'private, no-store',
       },
     });
+  });
+
+  // ---- Onboarding -------------------------------------------------------------------------------
+
+  registerOnboarding(app, {
+    nav,
+    uid,
+    role,
+    fresh,
+    changer,
+    sensitive,
+    notFound,
+    errorText,
+    done,
+    formValues: async (c) => {
+      const form = await c.req.parseBody();
+      const values: Record<string, string> = {};
+      for (const [key, value] of Object.entries(form)) values[key] = text(value);
+      return values;
+    },
   });
 
   // ---- Partners ---------------------------------------------------------------------------------

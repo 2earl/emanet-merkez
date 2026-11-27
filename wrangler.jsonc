@@ -54,7 +54,11 @@
 
   // Agents' photos and reports, read by staff before confirming a delivery (written by Emanet
   // Saha). EU jurisdiction, like the databases.
-  "r2_buckets": [{ "binding": "EVIDENCE", "bucket_name": "emanet-evidence", "jurisdiction": "eu" }],
+  // Agents' evidence, and companies' onboarding documents; read only, to show them to staff.
+  "r2_buckets": [
+    { "binding": "EVIDENCE", "bucket_name": "emanet-evidence", "jurisdiction": "eu" },
+    { "binding": "DOCUMENTS", "bucket_name": "emanet-documents", "jurisdiction": "eu" },
+  ],
 
   // Sessions and sign-in transactions only; everything else is in emanet-core.
   "d1_databases": [

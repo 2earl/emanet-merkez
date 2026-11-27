@@ -133,6 +133,47 @@ describe('Turkish', () => {
       (r) => r.text(),
     );
 
+    // Onboarding: every state, every action, and their errors.
+    await get('/onboarding', admin);
+    await get('/onboarding?status=signed', support);
+    await get('/onboarding/ob-signed', admin);
+    await get('/onboarding/ob-signed', old);
+    await get('/onboarding/ob-signed', second);
+    await get('/onboarding/ob-progress', admin);
+    await get('/onboarding/ob-invited', support);
+    await send('/onboarding', admin, {
+      company: 'X',
+      kind: 'bank',
+      contact_name: 'Y',
+      contact_email: 'ops@ornek.example',
+      locale: 'tr',
+      reconfirm_days: '14',
+      default: '100',
+      rules: '',
+    });
+    await send('/onboarding', admin, { company: 'X', default: 'x' });
+    await send('/onboarding/ob-signed/approve', admin);
+    await send('/onboarding/ob-signed/return', second, { reason: '' });
+    for (const done of [
+      'invited',
+      'invited_unsent',
+      'resent',
+      'returned',
+      'onboarded',
+      'declined',
+      'cancelled',
+    ]) {
+      await get(`/onboarding/ob-invited?done=${done}`, admin);
+    }
+    await send('/onboarding/ob-signed/approve', second);
+    await get('/onboarding/ob-signed', second);
+    await send('/onboarding/ob-progress/reject', second, { reason: 'Yetki yok' });
+    await get('/onboarding/ob-progress', second);
+    await send('/onboarding/ob-invited/cancel', second, { reason: 'x' });
+    await get('/onboarding/ob-invited', second);
+    await send('/onboarding/ob-invited/resend', second);
+    await get('/onboarding?status=expired', admin);
+
     expect([...missing].sort()).toEqual([]);
   });
 });

@@ -31,8 +31,8 @@ export function esc(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-const data = (value: string) => `<span translate="no">${esc(value)}</span>`;
-const attr = (value: string) => esc(value);
+export const data = (value: string) => `<span translate="no">${esc(value)}</span>`;
+export const attr = (value: string) => esc(value);
 
 const MARK =
   '<svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">' +
@@ -42,7 +42,8 @@ const MARK =
   '<path fill="#FBB03B" d="M100 50V85A15 15 0 0 1 85 100H50Z"/>' +
   '</svg>';
 
-export type Section = 'home' | 'reviews' | 'partners' | 'agents' | 'money' | 'settings';
+export type Section =
+  'home' | 'reviews' | 'onboarding' | 'partners' | 'agents' | 'money' | 'settings';
 
 export interface Nav {
   signedIn: boolean;
@@ -62,14 +63,14 @@ export const lira = (kurus: number) =>
   `<span translate="no">₺${(kurus / 100).toLocaleString(currentLocale() === 'tr' ? 'tr-TR' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
 
 /** Lira as a form shows it for editing: 12500.00 */
-const liraInput = (kurus: number) => (kurus / 100).toFixed(2);
+export const liraInput = (kurus: number) => (kurus / 100).toFixed(2);
 
-const day = (unix: number | null) =>
+export const day = (unix: number | null) =>
   unix === null
     ? '—'
     : `<time translate="no">${new Date(unix * 1000).toISOString().slice(0, 10)}</time>`;
 
-const moment = (unix: number | null) =>
+export const moment = (unix: number | null) =>
   unix === null
     ? '—'
     : `<time translate="no">${new Date(unix * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC</time>`;
@@ -80,13 +81,14 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   support: 'Support',
 };
 
-function layout(title: string, nav: Nav, body: string): string {
+export function layout(title: string, nav: Nav, body: string): string {
   const link = (key: Section, href: string, label: string) =>
     `<a href="${href}"${nav.current === key ? ' aria-current="page"' : ''}>${label}</a>`;
   const sections = nav.role
     ? `<nav aria-label="Sections">
         ${link('home', '/', 'Today')}
         ${link('reviews', '/reviews', 'Reviews')}
+        ${link('onboarding', '/onboarding', 'Onboarding')}
         ${link('partners', '/partners', 'Partners')}
         ${link('agents', '/agents', 'Agents')}
         ${link('money', '/money', 'Money')}
@@ -124,12 +126,12 @@ ${body}
 </html>`;
 }
 
-const notice = (text: string | null) => (text ? `<p class="notice">${esc(text)}</p>` : '');
-const error = (text: string | null) =>
+export const notice = (text: string | null) => (text ? `<p class="notice">${esc(text)}</p>` : '');
+export const error = (text: string | null) =>
   text ? `<p class="error" role="alert">${esc(text)}</p>` : '';
 
 /** Shown in place of forms that need a second factor from the last 15 minutes. */
-function confirmFirst(returnTo: string): string {
+export function confirmFirst(returnTo: string): string {
   return `<p class="panel">To change money or rules, confirm it’s you first. <a class="button secondary" href="/signin?second_factor=1&amp;return=${encodeURIComponent(returnTo)}">Confirm it’s you</a></p>`;
 }
 
@@ -161,6 +163,7 @@ export interface Today {
   payoutsReady: number;
   payoutsApproved: number;
   agentsWaiting: number;
+  onboardingsSigned: number;
 }
 
 const REVIEW_LABEL: Record<ReviewItem['kind'], string> = {
@@ -190,6 +193,7 @@ export function today(nav: Nav, t: Today, now: number): string {
        ${tile('/reviews?kind=delivery', t.reviews.delivery, REVIEW_LABEL.delivery)}
        ${tile('/reviews?kind=missing_vin', t.reviews.missing_vin, REVIEW_LABEL.missing_vin)}
        ${tile('/reviews?kind=plate_conflict', t.reviews.plate_conflict, REVIEW_LABEL.plate_conflict)}
+       ${tile('/onboarding?status=signed', t.onboardingsSigned, 'Companies to approve')}
        ${tile('/agents?status=kyc_pending', t.agentsWaiting, 'Agents waiting for KYC')}
        ${tile('/money#payouts', t.payoutsReady, 'Payouts to order')}
        ${tile('/money#payouts', t.payoutsApproved, 'Payouts to send')}
@@ -408,7 +412,7 @@ export function reviewDetail(
 
 // ---- Partners -------------------------------------------------------------------------------------
 
-const KIND_LABEL: Record<PartnerRow['kind'], string> = {
+export const KIND_LABEL: Record<PartnerRow['kind'], string> = {
   bank: 'Bank',
   vys: 'Asset management company',
   law_firm: 'Law firm',

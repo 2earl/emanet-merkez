@@ -234,7 +234,125 @@ export interface PayoutRule {
 }
 
 /** emanet-core's ControlApi, reached over the CORE Service Binding. */
+// ---- Onboarding (2earl/emanet-core src/onboarding.ts) ----------------------------------------
+
+export type OnboardingStatus =
+  'invited' | 'in_progress' | 'signed' | 'approved' | 'rejected' | 'cancelled' | 'expired';
+export const ONBOARDING_STATUSES: readonly OnboardingStatus[] = [
+  'signed',
+  'in_progress',
+  'invited',
+  'approved',
+  'rejected',
+  'cancelled',
+  'expired',
+];
+
+export type DocumentKind =
+  'signed_contract' | 'signature_circular' | 'tax_certificate' | 'trade_registry' | 'other';
+export const REQUIRED_DOCUMENTS: readonly DocumentKind[] = [
+  'signature_circular',
+  'tax_certificate',
+];
+
+export interface OnboardingRow {
+  id: string;
+  kind: PartnerKind;
+  company: string;
+  legal_name: string | null;
+  contact_name: string;
+  contact_email: string;
+  locale: 'tr' | 'en';
+  status: OnboardingStatus;
+  invited_by: string;
+  invited_at: number;
+  sent_at: number;
+  expires_at: number;
+  signed_at: number | null;
+  decided_at: number | null;
+  partner_id: string | null;
+  updated_at: number;
+}
+
+export interface CompanyDetails {
+  legalName: string;
+  address: string;
+  taxOffice: string;
+  vkn: string;
+  mersis: string | null;
+  kep: string | null;
+  signatoryName: string;
+  signatoryTitle: string;
+  billingEmail: string;
+  operationsName: string;
+  operationsEmail: string;
+  operationsPhone: string;
+  eInvoice: boolean;
+}
+
+export interface OnboardingDocument {
+  id: string;
+  kind: DocumentKind;
+  file_ref: string;
+  sha256: string;
+  file_name: string;
+  content_type: string;
+  size: number;
+  uploaded_by: string;
+  uploaded_at: number;
+}
+
+export interface OnboardingDetail extends Omit<OnboardingRow, 'legal_name'> {
+  price_list: PriceList | null;
+  reconfirm_days: number;
+  note: string | null;
+  claimed_by: string | null;
+  org_id: string | null;
+  details: CompanyDetails | null;
+  contract_version: string | null;
+  contract_sha256: string | null;
+  contract_text: string | null;
+  signer_name: string | null;
+  signer_title: string | null;
+  decision_reason: string | null;
+  documents: OnboardingDocument[];
+}
+
+export interface Invitation {
+  company: string;
+  kind: PartnerKind;
+  contactName: string;
+  contactEmail: string;
+  locale: 'tr' | 'en';
+  priceList: PriceList;
+  reconfirmDays?: number;
+  note?: string;
+}
+
 export interface ControlApi {
+  inviteCompany(
+    staffId: string,
+    input: Invitation,
+  ): Promise<Result<{ id: string; emailed: boolean }>>;
+  onboardings(status: OnboardingStatus | null): Promise<Result<OnboardingRow[]>>;
+  onboarding(id: string): Promise<Result<OnboardingDetail>>;
+  resendInvitation(staffId: string, id: string): Promise<Result<{ emailed: boolean }>>;
+  cancelOnboarding(staffId: string, id: string, reason: string): Promise<Result<null>>;
+  returnOnboarding(
+    staffId: string,
+    id: string,
+    reason: string,
+  ): Promise<Result<{ emailed: boolean }>>;
+  approveOnboarding(
+    staffId: string,
+    id: string,
+  ): Promise<Result<{ partnerId: string; emailed: boolean }>>;
+  rejectOnboarding(
+    staffId: string,
+    id: string,
+    reason: string,
+  ): Promise<Result<{ emailed: boolean }>>;
+
   partners(): Promise<Result<PartnerRow[]>>;
   partner(id: string): Promise<
     Result<{
