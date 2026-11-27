@@ -651,6 +651,20 @@ export function partnerDetail(
        <dt>Delivered</dt><dd translate="no">${String(p.delivered_cases)}</dd>
      </dl></div>
      ${statusActions}
+     <h2>Email notices</h2>
+     <div class="panel"><dl class="facts">
+       <dt>Operations contact</dt><dd>${p.contact_email ? data(p.contact_email) : '—'}</dd>
+       <dt>Invoices to</dt><dd>${p.billing_email ? data(p.billing_email) : '—'}</dd>
+       <dt>Notices</dt><dd>${p.mail_notices === 0 ? 'Off' : p.contact_email ? 'On: vehicles in custody (hourly), cases about to expire (daily)' : 'No contact to send to'}</dd>
+     </dl></div>
+     ${
+       canChange && p.contact_email
+         ? `<form method="post" action="${path}/notices" class="actions">
+             <input type="hidden" name="on" value="${p.mail_notices === 0 ? '1' : '0'}">
+             <button class="secondary" type="submit">${p.mail_notices === 0 ? 'Turn notices on' : 'Turn notices off'}</button>
+           </form>`
+         : ''
+     }
      ${edit}
      ${price}
      <h2>Custom fields</h2>

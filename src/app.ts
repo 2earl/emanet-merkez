@@ -567,6 +567,15 @@ export function createApp(now: () => number) {
     );
   });
 
+  app.post('/partners/:id/notices', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).setPartnerNotices(uid(c), c.req.param('id'), v.on === '1');
+    if (!result.ok) return showPartner(c, errorText(result.error), 422);
+    return c.redirect(`/partners/${c.req.param('id')}?done=saved`, 303);
+  });
+
   app.post('/partners/:id/prices', async (c) => {
     const denied = sensitive(c, `/partners/${c.req.param('id')}`);
     if (denied) return denied;
