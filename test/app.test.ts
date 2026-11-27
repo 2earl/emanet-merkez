@@ -75,6 +75,7 @@ describe('who gets in', () => {
       '/partners/p-1',
       '/agents',
       '/agents?status=kyc_pending',
+      '/agents/agent-1',
       '/money',
       '/money?partner=p-1',
       '/money/ledger',
@@ -269,8 +270,12 @@ describe('partners', () => {
 });
 
 describe('agents', () => {
-  it('changes an agent’s status with a reason', async () => {
+  it('shows an agent’s details and changes their status with a reason', async () => {
     const cookie = await signIn('admin-1!old');
+    const page = await (await request('/agents/agent-1', { headers: { Cookie: cookie } })).text();
+    expect(page).toContain('tel:+905321234567');
+    expect(page).toContain('TR330006100519786457841326');
+    expect(page).toContain('Identity check');
     expect(
       (await post('/agents/agent-1/status', cookie, { status: 'active', reason: '' })).status,
     ).toBe(422);
@@ -278,9 +283,47 @@ describe('agents', () => {
       status: 'active',
       reason: 'KYC passed',
     });
-    expect(response.headers.get('Location')).toBe('/agents?done=saved');
+    expect(response.headers.get('Location')).toBe('/agents/agent-1?done=saved');
     expect(await callsOf('setAgentStatus')).toEqual([
       ['admin-1', 'agent-1', 'active', 'KYC passed'],
+    ]);
+    expect((await request('/agents/nobody', { headers: { Cookie: cookie } })).status).toBe(404);
+  });
+
+  it('verifies the IBAN that was checked, with a fresh second factor', async () => {
+    const old = await signIn('admin-1!old');
+    expect(await (await request('/agents/agent-1', { headers: { Cookie: old } })).text()).toContain(
+      'Confirm it’s you',
+    );
+    const stale = await post('/agents/agent-1/iban', old, {
+      iban: 'TR330006100519786457841326',
+      checked: '1',
+    });
+    expect(stale.headers.get('Location')).toBe(
+      '/signin?second_factor=1&return=%2Fagents%2Fagent-1',
+    );
+    const support = await signIn('support-1!aal2');
+    expect((await post('/agents/agent-1/iban', support, { iban: 'x', checked: '1' })).status).toBe(
+      403,
+    );
+    const fresh = await signIn('admin-1!aal2');
+    expect(
+      (await post('/agents/agent-1/iban', fresh, { iban: 'TR330006100519786457841326' })).status,
+    ).toBe(422);
+    const changed = await post('/agents/agent-1/iban', fresh, {
+      iban: 'TR320010009999901234567890',
+      checked: '1',
+    });
+    expect(changed.status).toBe(409);
+    expect(await changed.text()).toContain('changed their IBAN');
+    const ok = await post('/agents/agent-1/iban', fresh, {
+      iban: 'TR330006100519786457841326',
+      checked: '1',
+    });
+    expect(ok.headers.get('Location')).toBe('/agents/agent-1?done=saved');
+    expect(await callsOf('verifyIban')).toEqual([
+      ['admin-1', 'agent-1', 'TR320010009999901234567890'],
+      ['admin-1', 'agent-1', 'TR330006100519786457841326'],
     ]);
   });
 });

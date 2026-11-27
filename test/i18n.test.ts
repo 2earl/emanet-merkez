@@ -54,6 +54,7 @@ describe('Turkish', () => {
         '/partners/p-1',
         '/agents',
         '/agents?status=banned',
+        '/agents/agent-1',
         '/money',
         '/money?partner=p-1',
         '/money/ledger',
@@ -70,6 +71,10 @@ describe('Turkish', () => {
       await get(`/money?done=${done}`, admin);
     await get('/settings?done=saved', admin);
     await get('/agents?done=saved', admin);
+    await get('/agents/agent-1?done=saved', admin);
+    await get('/agents/agent-1', old);
+    await send('/agents/agent-1/iban', admin, { iban: 'TR320010009999901234567890', checked: '1' });
+    await send('/agents/agent-1/iban', admin, { iban: 'x' });
 
     // Errors shown on pages.
     await send('/reviews/r-vin/accept', support, { vin: 'x' });
@@ -128,7 +133,6 @@ describe('Turkish', () => {
       (r) => r.text(),
     );
 
-    console.log('MISSING' + JSON.stringify([...missing].sort()));
     expect([...missing].sort()).toEqual([]);
   });
 });

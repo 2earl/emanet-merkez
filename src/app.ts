@@ -82,6 +82,8 @@ const ERROR_TEXT: Record<string, string> = {
   payout_not_ready: 'This payout can’t be ordered now.',
   payout_not_approved: 'This payout isn’t approved yet.',
   second_approver_required: 'A second admin, not you, must approve this payout.',
+  iban_not_verified: 'The agent’s IBAN isn’t verified yet. Verify it on the agent’s page first.',
+  iban_changed: 'The agent changed their IBAN since this page was opened. Check the new one.',
   conflict_retry: 'Someone changed this at the same moment. Try again.',
 };
 /** The core's detail says which part was wrong; only where it helps the reader. */
@@ -552,36 +554,55 @@ export function createApp(now: () => number) {
 
   // ---- Agents -----------------------------------------------------------------------------------
 
-  const showAgents = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
+  app.get('/agents', async (c) => {
     const raw = c.req.query('status');
     const filter = pages.AGENT_STATUSES.includes(raw as AgentRow['status'])
       ? (raw as AgentRow['status'])
       : null;
     const agents = unwrap(await core(c.env).agents(filter));
+    return c.html(pages.agentList(nav(c), agents, filter, done(c)));
+  });
+
+  const showAgent = async (c: AppContext, error: string | null, status: 200 | 409 | 422 = 200) => {
+    const agent = unwrap(await core(c.env).agents(null)).find(
+      (a) => a.user_id === c.req.param('id'),
+    );
+    if (!agent) return notFound(c);
     return c.html(
-      pages.agentList(nav(c), agents, filter, can.change(role(c)), done(c), error),
+      pages.agentDetail(nav(c), agent, can.change(role(c)), fresh(c), done(c), error),
       status,
     );
   };
 
-  app.get('/agents', (c) => showAgents(c, null));
+  app.get('/agents/:id', (c) => showAgent(c, null));
 
   app.post('/agents/:id/status', async (c) => {
     const denied = changer(c);
     if (denied) return denied;
     const v = await formValues(c);
     if (!pages.AGENT_STATUSES.includes(v.status as AgentRow['status'])) {
-      return showAgents(c, errorText('invalid_setting'), 422);
+      return showAgent(c, errorText('invalid_setting'), 422);
     }
-    if (!v.reason) return showAgents(c, errorText('invalid_reason'), 422);
+    if (!v.reason) return showAgent(c, errorText('invalid_reason'), 422);
     const result = await core(c.env).setAgentStatus(
       uid(c),
       c.req.param('id'),
       v.status as AgentRow['status'],
       v.reason,
     );
-    if (!result.ok) return showAgents(c, errorText(result.error), 422);
-    return c.redirect('/agents?done=saved', 303);
+    if (!result.ok) return showAgent(c, errorText(result.error), 422);
+    return c.redirect(`/agents/${c.req.param('id')}?done=saved`, 303);
+  });
+
+  /** Money will go to this IBAN: owner or admin, with a fresh second factor. */
+  app.post('/agents/:id/iban', async (c) => {
+    const denied = sensitive(c, `/agents/${c.req.param('id')}`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    if (v.checked !== '1') return showAgent(c, 'Confirm you checked the IBAN.', 422);
+    const result = await core(c.env).verifyIban(uid(c), c.req.param('id'), v.iban ?? '');
+    if (!result.ok) return showAgent(c, errorText(result.error), 409);
+    return c.redirect(`/agents/${c.req.param('id')}?done=saved`, 303);
   });
 
   // ---- Money ------------------------------------------------------------------------------------

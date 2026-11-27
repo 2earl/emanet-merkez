@@ -67,7 +67,9 @@ function seed() {
       dual_approval_kurus: 2500000, withholding_individual_bp: 0, withholding_sole_trader_bp: 0, withholding_company_bp: 0 },
     rule: { rule: { share_bp: 5000 }, valid_from: t - 86400 },
     agents: [{ user_id: 'agent-1', status: 'kyc_pending', legal_name: 'Ali Veli', city: 'İstanbul',
-      tax_profile: 'individual', strikes: 0, created_at: t - 3600, iban_verified: 0, open_claims: 0, deliveries: 0 }],
+      phone: '+905321234567', iban: 'TR330006100519786457841326', tax_profile: 'individual', vkn: null,
+      strikes: 0, created_at: t - 3600, submitted_at: t - 1800, terms_version: '2026-11-27',
+      iban_verified: 0, open_claims: 0, deliveries: 0 }],
     reviews: new Map([
       ['r-vin', { item: { id: 'r-vin', kind: 'missing_vin', subject_id: 'c-1', detail: { plate: '34ABC123' }, created_at: t - 7200 },
         case: { id: 'c-1', legal_name: 'Test Bankası A.Ş.', external_ref: 'K-1', status: 'pending_identity',
@@ -177,6 +179,13 @@ export class ControlApi extends WorkerEntrypoint {
     const a = s.agents.find((x) => x.user_id === id);
     if (!a) return fail('not_found');
     a.status = status;
+    return ok(null);
+  }
+  async verifyIban(staffId, id, iban) {
+    log('verifyIban', [staffId, id, iban]);
+    const a = s.agents.find((x) => x.user_id === id);
+    if (!a || a.iban !== iban) return fail('iban_changed');
+    a.iban_verified = 1;
     return ok(null);
   }
   async reviewQueue() { return ok([...s.reviews.values()].map((r) => ({ ...r.item, detail: JSON.stringify(r.item.detail) }))); }

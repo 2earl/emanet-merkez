@@ -91,9 +91,14 @@ export interface AgentRow {
   status: 'applied' | 'kyc_pending' | 'active' | 'suspended' | 'banned';
   legal_name: string | null;
   city: string | null;
+  phone: string | null;
+  iban: string | null;
   tax_profile: string;
+  vkn: string | null;
   strikes: number;
   created_at: number;
+  submitted_at: number | null;
+  terms_version: string | null;
   iban_verified: number;
   open_claims: number;
   deliveries: number;
@@ -288,6 +293,8 @@ export interface ControlApi {
     status: AgentRow['status'],
     reason: string,
   ): Promise<Result<null>>;
+  /** Verifies only the IBAN the staff member checked: iban_changed if the agent changed it since. */
+  verifyIban(staffId: string, agentId: string, iban: string): Promise<Result<null>>;
   reviewQueue(limit?: number): Promise<Result<ReviewItem[]>>;
   review(id: string): Promise<Result<ReviewDetail>>;
   resolveIdentity(
