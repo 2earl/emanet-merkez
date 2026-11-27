@@ -65,12 +65,13 @@ function seed() {
     fields: [{ id: 'f-1', partner_id: 'p-1', entity: 'case', key: 'portfolio', label_tr: 'Portföy',
       label_en: 'Portfolio', type: 'enum', enum_values: '["A","B"]', required: 0, visibility: 'partner', deprecated_at: null }],
     settings: { claim_hours: 24, reporting_hours: 12, cooldown_hours: 72, max_active_claims: 3, kdv_bp: 2000,
-      dual_approval_kurus: 2500000, withholding_individual_bp: 0, withholding_sole_trader_bp: 0, withholding_company_bp: 0 },
+      dual_approval_kurus: 2500000, withholding_individual_bp: 0, withholding_sole_trader_bp: 0, withholding_company_bp: 0,
+      evidence_retention_days: 3650 },
     rule: { rule: { share_bp: 5000 }, valid_from: t - 86400 },
     agents: [{ user_id: 'agent-1', status: 'kyc_pending', legal_name: 'Ali Veli', city: 'İstanbul',
       phone: '+905321234567', iban: 'TR330006100519786457841326', tax_profile: 'individual', vkn: null,
       strikes: 0, created_at: t - 3600, submitted_at: t - 1800, terms_version: '2026-11-27',
-      iban_verified: 0, open_claims: 0, deliveries: 0 }],
+      iban_verified: 0, open_claims: 0, deliveries: 0, email: 'ali@example.com', id_given: 1, birth_year: 1990 }],
     reviews: new Map([
       ['r-vin', { item: { id: 'r-vin', kind: 'missing_vin', subject_id: 'c-1', detail: { plate: '34ABC123' }, created_at: t - 7200 },
         case: { id: 'c-1', legal_name: 'Test Bankası A.Ş.', external_ref: 'K-1', status: 'pending_identity',
@@ -141,16 +142,6 @@ export class ControlApi extends WorkerEntrypoint {
     const price = s.prices.get(id);
     return ok({ partner, priceList: price?.list ?? null, priceListFrom: price?.from ?? null,
       fields: s.fields.filter((f) => f.partner_id === id || f.partner_id === null) });
-  }
-  async createPartner(staffId, input) {
-    log('createPartner', [staffId, input]);
-    if (!input.legalName.trim()) return fail('missing_legal_name');
-    if ([...s.partners.values()].some((p) => p.org_id === input.orgId)) return fail('partner_exists');
-    const id = 'p-' + (s.partners.size + 1);
-    s.partners.set(id, { id, org_id: input.orgId, kind: input.kind, legal_name: input.legalName, vkn: input.vkn ?? null,
-      tax_office: input.taxOffice ?? null, kep_address: input.kepAddress ?? null, e_invoice: input.eInvoice ? 1 : 0,
-      status: 'invited', reconfirm_days: input.reconfirmDays ?? 14, created_at: now(), active_cases: 0, delivered_cases: 0 });
-    return ok({ id });
   }
   async updatePartner(staffId, id, input) {
     log('updatePartner', [staffId, id, input]);
@@ -269,6 +260,59 @@ export class ControlApi extends WorkerEntrypoint {
       { id: 'a-1', at: t - 3600, actor: 'partner:p-1/user-1', action: 'case.created', subject: 'case:c-1', detail: {} },
     ].filter((e) => (!query.subject || e.subject === query.subject) && (!query.actor || e.actor === query.actor));
     return ok({ events, next_before: query.before ? null : t - 3600 });
+  }
+  async reportError(event, detail) { log('reportError', [event, detail]); }
+  async heartbeat(name, error) { log('heartbeat', [name, error]); }
+  async kycChecks(agentId) {
+    return ok(s.videoCalls?.[agentId] ? [{ kind: 'video_call', provider: 'staff', result: s.videoCalls[agentId], reviewed_by: 'admin-1', created_at: now() }]
+      : [{ kind: 'id_registry', provider: 'nvi-kps', result: 'review', reviewed_by: null, created_at: now() - 60 }]);
+  }
+  async recordVideoCall(staffId, agentId, passed) {
+    log('recordVideoCall', [staffId, agentId, passed]);
+    s.videoCalls = { ...(s.videoCalls ?? {}), [agentId]: passed ? 'passed' : 'failed' };
+    return ok(null);
+  }
+  async privacySearch(staffId, term) {
+    log('privacySearch', [staffId, term]);
+    if (term.length < 3) return fail('invalid_search');
+    const none = { vehicle: null, agent: null, evidence: [], onboardings: [] };
+    if (term === 'nobody@example.com') return ok(none);
+    if (term.includes('@')) return ok({ ...none,
+      agent: { user_id: 'agent-1', status: 'active', legal_name: 'Ali Veli', email: term, phone: '+905321234567', sightings: 2, payouts: 1 },
+      onboardings: [{ id: 'ob-signed', company: 'Örnek Bank', contact_name: 'Ayşe Yılmaz', contact_email: term, status: 'signed',
+        documents: [{ id: 'd-1', kind: 'signature_circular', file_name: 'imza.pdf', erased: s.erased?.has('d-1') ? 'due' : 'no' }] }] });
+    return ok({ ...none,
+      vehicle: { id: 'v-1', plate: '34ABC123', vin: 'VF1RJA00061234567', cases: [
+        { id: 'c-1', partner: 'Test Bankası A.Ş.', external_ref: 'K-1', status: 'withdrawn', places: 2, addresses: 1 },
+        { id: 'c-5', partner: 'Test Bankası A.Ş.', external_ref: 'K-5', status: 'active', places: 1, addresses: 1 }] },
+      evidence: [
+        { id: 'e-1', claim_id: 'cl-1', kind: 'scene', about: 'vehicle', created_at: now() - 900, delivered: true, erased: s.erased?.has('e-1') ? 'due' : 'no' },
+        { id: 'e-2', claim_id: 'cl-2', kind: 'police_report', about: 'document', created_at: now() - 800, delivered: false, erased: 'yes' }] });
+  }
+  async eraseEvidence(staffId, id, reason) { log('eraseEvidence', [staffId, id, reason]); if (!reason) return fail('invalid_reason'); (s.erased ??= new Set()).add(id); return ok(null); }
+  async eraseDocument(staffId, id, reason) { log('eraseDocument', [staffId, id, reason]); if (!reason) return fail('invalid_reason'); (s.erased ??= new Set()).add(id); return ok(null); }
+  async redactCasePlaces(staffId, id, reason) { log('redactCasePlaces', [staffId, id, reason]); if (!reason) return fail('invalid_reason'); if (id === 'c-5') return fail('case_open'); return ok({ places: 1 }); }
+  async privacyRequests() {
+    return ok(s.requests ?? (s.requests = [
+      { id: 'pr-1', kind: 'erasure', subject_kind: 'vehicle', subject_ref: '34ABC123', channel: 'KEP', note: null, received_at: now() - 40 * 86400, due_at: now() - 10 * 86400, status: 'open', outcome: null, closed_at: null },
+      { id: 'pr-2', kind: 'access', subject_kind: 'agent', subject_ref: 'ali@example.com', channel: 'Email', note: null, received_at: now() - 86400, due_at: now() + 29 * 86400, status: 'open', outcome: null, closed_at: null },
+      { id: 'pr-3', kind: 'objection', subject_kind: 'contact', subject_ref: 'x@example.com', channel: 'Post', note: null, received_at: now() - 90 * 86400, due_at: now() - 60 * 86400, status: 'refused', outcome: 'Not a data subject', closed_at: now() - 70 * 86400 },
+      { id: 'pr-4', kind: 'correction', subject_kind: 'other', subject_ref: 'y@example.com', channel: 'Email', note: null, received_at: now() - 90 * 86400, due_at: now() - 60 * 86400, status: 'done', outcome: 'Corrected', closed_at: now() - 80 * 86400 }]));
+  }
+  async openPrivacyRequest(staffId, input) { log('openPrivacyRequest', [staffId, input]); if (!input.subjectRef || !input.channel) return fail('invalid_request'); return ok({ id: 'pr-9', due_at: now() + 30 * 86400 }); }
+  async closePrivacyRequest(staffId, id, input) { log('closePrivacyRequest', [staffId, id, input]); if (!input.outcome) return fail('invalid_request'); return ok(null); }
+  async filesDue() { return ok(s.due ?? [{ file_ref: 'claims/cl-1/e-9', bucket: 'evidence' }, { file_ref: 'onboarding/ob-1/d-9', bucket: 'documents' }]); }
+  async filesErased(refs) { log('filesErased', [refs]); s.due = []; return ok({ erased: refs.length }); }
+  async ops() {
+    const t = now();
+    return ok({
+      events: [{ id: 'o-1', at: t - 300, source: 'saha', level: 'error', event: 'GET /claims/:id', detail: 'TypeError' },
+        { id: 'o-2', at: t - 900, source: 'kurumsal', level: 'warn', event: 'webhook.disabled', detail: 'bank.example' }],
+      heartbeats: [{ name: 'core.expireClaims', ok_at: t - 120, failed_at: null, error: null },
+        { name: 'core.notices', ok_at: t - 7200, failed_at: t - 60, error: 'D1_ERROR' },
+        { name: 'merkez.erase_files', ok_at: t - 7200, failed_at: null, error: null }],
+      last_day: [{ source: 'saha', level: 'error', n: 3 }],
+      queues: { oldest_review_at: t - 7200, files_due: 2, requests_open: 2, requests_overdue: 1, agents_waiting: 1 } });
   }
   async uninvoiced() { return ok(s.uninvoiced); }
   async invoices(partnerId) { return ok(s.invoices.filter((i) => partnerId === null || i.partner_id === partnerId)); }

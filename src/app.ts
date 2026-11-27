@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { routePath } from 'hono/route';
 import {
   SESSION_ABSOLUTE_SECONDS,
   SIGNIN_TTL_SECONDS,
@@ -12,13 +13,11 @@ import {
   startSignIn,
 } from './auth';
 import {
-  PARTNER_KINDS,
   can,
   core,
   staff,
   type AgentRow,
   type NewField,
-  type PartnerKind,
   type ReviewItem,
   type Settings,
 } from './core';
@@ -57,7 +56,12 @@ const ERROR_TEXT: Record<string, string> = {
   missing_legal_name: 'Enter the legal name.',
   invalid_vkn: 'The tax number has 10 digits (11 for a person).',
   invalid_reconfirm_days: 'Re-confirming must be every 1 to 90 days.',
-  partner_exists: 'This login organization is already a partner.',
+  no_agreement:
+    'This company hasn’t accepted the agreement. Invite it under Onboarding; it becomes active when its onboarding is approved.',
+  invalid_search: 'Enter a plate, a chassis number, an account ID or an email address.',
+  case_open:
+    'This case is still open. Its partner changes or withdraws it; closed cases can be erased here.',
+  invalid_request: 'Fill in what the request is, who it is about and how it arrived.',
   invalid_price_list: 'The price list isn’t valid.',
   invalid_key: 'The key uses a to z, 0 to 9 and _, starting with a letter.',
   reserved_key: 'This key is one of Emanet’s own fields.',
@@ -129,6 +133,11 @@ const DONE: Record<string, string> = {
   delivered: 'Delivered. The partners are told, and the agent’s payout is created.',
   dismissed: 'Not accepted. The agent reads your reason; nothing was booked.',
   numbered: 'Invoice number saved.',
+  erased: 'Queued. The file is deleted within minutes; the record stays without it.',
+  redacted: 'The addresses are erased.',
+  request_opened: 'Request recorded. It must be answered within 30 days.',
+  request_closed: 'Request closed.',
+  call_recorded: 'Video call recorded.',
   saved: 'Saved.',
   activated: 'Activated. Its people can use Emanet Kurumsal now.',
   suspended: 'Suspended.',
@@ -155,10 +164,49 @@ const SECTIONS = [
   '/money',
   '/settings',
   '/audit',
+  '/privacy',
+  '/system',
 ];
 
 export function createApp(now: () => number) {
   const app = new Hono<AppEnv>();
+
+  // One line per request for Cloudflare's logs: the route's pattern (never the address itself,
+  // which carries IDs), the status and how long it took.
+  app.use('*', async (c: AppContext, next) => {
+    const started = Date.now();
+    await next();
+    console.log(
+      JSON.stringify({
+        level: c.res.status >= 500 ? 'error' : 'info',
+        event: 'request',
+        route: `${c.req.method} ${routePath(c)}`,
+        status: c.res.status,
+        ms: Date.now() - started,
+      }),
+    );
+  });
+
+  // Anything unexpected: the person gets a page that says so, and the core is told the route and
+  // the error's name (for the System page in Emanet Merkez and the alert email). Never the data.
+  app.onError(async (error, c) => {
+    const route = `${c.req.method} ${routePath(c)}`;
+    const name = error instanceof Error ? error.name : 'error';
+    console.error(JSON.stringify({ level: 'error', event: 'request.failed', route, error: name }));
+    try {
+      await core(c.env).reportError(route, name);
+    } catch {
+      // The core itself may be what failed; the log line above stands.
+    }
+    return c.html(
+      pages.problem(
+        { signedIn: false },
+        'Something went wrong',
+        'That didn’t work, and 2earl has been told. Try again in a moment.',
+      ),
+      500,
+    );
+  });
 
   // Language: ?lang= (remembered), the cookie, then the browser's.
   app.use('*', async (c: AppContext, next) => {
@@ -481,7 +529,7 @@ export function createApp(now: () => number) {
     const item = review.ok
       ? review.value.evidence?.find((e) => e.id === c.req.param('evidence'))
       : undefined;
-    if (!item) return notFound(c);
+    if (!item || item.erased === 1) return notFound(c);
     const object = await c.env.EVIDENCE.get(item.file_ref);
     if (!object) return notFound(c);
     await core(c.env).recordView(uid(c), `review:${c.req.param('id')}`, `evidence ${item.id}`);
@@ -520,7 +568,7 @@ export function createApp(now: () => number) {
 
   app.get('/partners', async (c) => {
     const partners = unwrap(await core(c.env).partners());
-    return c.html(pages.partnerList(nav(c), partners, can.change(role(c)), null, {}));
+    return c.html(pages.partnerList(nav(c), partners));
   });
 
   const formValues = async (c: AppContext) => {
@@ -537,38 +585,8 @@ export function createApp(now: () => number) {
     reconfirmDays: Number(v.reconfirm_days),
   });
 
-  app.post('/partners', async (c) => {
-    const denied = changer(c);
-    if (denied) return denied;
-    const v = await formValues(c);
-    const tax = taxOf(v);
-    const kind = PARTNER_KINDS.includes(v.kind as PartnerKind) ? (v.kind as PartnerKind) : 'other';
-    if (!v.org_id) {
-      const partners = unwrap(await core(c.env).partners());
-      return c.html(
-        pages.partnerList(nav(c), partners, true, 'Enter the login organization ID.', v),
-        422,
-      );
-    }
-    const result = await core(c.env).createPartner(uid(c), {
-      orgId: v.org_id,
-      kind,
-      legalName: v.legal_name ?? '',
-      ...(tax.vkn ? { vkn: tax.vkn } : {}),
-      ...(tax.taxOffice ? { taxOffice: tax.taxOffice } : {}),
-      ...(tax.kepAddress ? { kepAddress: tax.kepAddress } : {}),
-      eInvoice: tax.eInvoice,
-      ...(Number.isInteger(tax.reconfirmDays) ? { reconfirmDays: tax.reconfirmDays } : {}),
-    });
-    if (!result.ok) {
-      const partners = unwrap(await core(c.env).partners());
-      return c.html(
-        pages.partnerList(nav(c), partners, true, errorText(result.error, result.detail), v),
-        result.error === 'partner_exists' ? 409 : 422,
-      );
-    }
-    return c.redirect(`/partners/${result.value.id}?done=saved`, 303);
-  });
+  // A company becomes a partner only through Onboarding: its accepted agreement and a second
+  // staff member's approval. There is no other way to add one.
 
   const showPartner = async (
     c: AppContext,
@@ -682,8 +700,17 @@ export function createApp(now: () => number) {
       (a) => a.user_id === c.req.param('id'),
     );
     if (!agent) return notFound(c);
+    const checks = await core(c.env).kycChecks(agent.user_id);
     return c.html(
-      pages.agentDetail(nav(c), agent, can.change(role(c)), fresh(c), done(c), error),
+      pages.agentDetail(
+        nav(c),
+        agent,
+        checks.ok ? checks.value : [],
+        can.change(role(c)),
+        fresh(c),
+        done(c),
+        error,
+      ),
       status,
     );
   };
@@ -711,6 +738,21 @@ export function createApp(now: () => number) {
     if (!result.ok)
       return showAgent(c, errorText(result.error), result.error === 'conflict_retry' ? 409 : 422);
     return c.redirect(`/agents/${c.req.param('id')}?done=saved`, 303);
+  });
+
+  /** Staff saw the person and their ID card on a video call. */
+  app.post('/agents/:id/video-call', async (c) => {
+    const denied = sensitive(c, `/agents/${c.req.param('id')}`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    if (v.seen !== '1') return showAgent(c, 'Confirm what you saw on the call.', 422);
+    const result = await core(c.env).recordVideoCall(
+      uid(c),
+      c.req.param('id'),
+      v.result !== 'failed',
+    );
+    if (!result.ok) return showAgent(c, errorText(result.error), 422);
+    return c.redirect(`/agents/${c.req.param('id')}?done=call_recorded`, 303);
   });
 
   /** Money will go to this IBAN: owner or admin, with a fresh second factor. */
@@ -957,6 +999,100 @@ export function createApp(now: () => number) {
       ),
     );
   });
+
+  // ---- Privacy: what is held about someone, and removing it (KVKK art. 7, 11, 13) ----------------
+
+  const showPrivacy = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
+    const term = text(c.req.query('q'));
+    const [found, requests] = await Promise.all([
+      term ? core(c.env).privacySearch(uid(c), term) : Promise.resolve(null),
+      core(c.env).privacyRequests(),
+    ]);
+    const searchError = found && !found.ok ? errorText(found.error) : null;
+    return c.html(
+      pages.privacyPage(
+        nav(c),
+        {
+          term,
+          found: found?.ok ? found.value : null,
+          requests: unwrap(requests),
+        },
+        can.change(role(c)),
+        fresh(c),
+        c.get('now'),
+        done(c),
+        error ?? searchError,
+      ),
+      (error ?? searchError) ? 422 : status,
+    );
+  };
+
+  app.get('/privacy', (c) => showPrivacy(c, null));
+
+  const back = (c: AppContext, outcome: string, q: string) =>
+    c.redirect(`/privacy?done=${outcome}${q ? `&q=${encodeURIComponent(q)}` : ''}`, 303);
+
+  for (const [path, run] of [
+    [
+      'evidence',
+      (c: AppContext, reason: string) =>
+        core(c.env).eraseEvidence(uid(c), c.req.param('id') ?? '', reason),
+    ],
+    [
+      'documents',
+      (c: AppContext, reason: string) =>
+        core(c.env).eraseDocument(uid(c), c.req.param('id') ?? '', reason),
+    ],
+    [
+      'cases',
+      (c: AppContext, reason: string) =>
+        core(c.env).redactCasePlaces(uid(c), c.req.param('id') ?? '', reason),
+    ],
+  ] as const) {
+    app.post(`/privacy/${path}/:id/erase`, async (c) => {
+      const denied = sensitive(c, '/privacy');
+      if (denied) return denied;
+      const v = await formValues(c);
+      const result = await run(c, v.reason ?? '');
+      if (!result.ok) return showPrivacy(c, errorText(result.error), 422);
+      return back(c, path === 'cases' ? 'redacted' : 'erased', v.q ?? '');
+    });
+  }
+
+  app.post('/privacy/requests', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const received = v.received_at ? Date.parse(`${v.received_at}T09:00:00Z`) / 1000 : NaN;
+    const result = await core(c.env).openPrivacyRequest(uid(c), {
+      kind: v.kind ?? '',
+      subjectKind: v.subject_kind ?? '',
+      subjectRef: v.subject_ref ?? '',
+      channel: v.channel ?? '',
+      ...(v.note ? { note: v.note } : {}),
+      ...(Number.isFinite(received) ? { receivedAt: received } : {}),
+    });
+    if (!result.ok) return showPrivacy(c, errorText(result.error), 422);
+    return back(c, 'request_opened', '');
+  });
+
+  app.post('/privacy/requests/:id/close', async (c) => {
+    const denied = changer(c);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).closePrivacyRequest(uid(c), c.req.param('id'), {
+      status: v.status === 'refused' ? 'refused' : 'done',
+      outcome: v.outcome ?? '',
+    });
+    if (!result.ok) return showPrivacy(c, errorText(result.error), 422);
+    return back(c, 'request_closed', '');
+  });
+
+  // ---- System: are the jobs running, what failed ------------------------------------------------
+
+  app.get('/system', async (c) =>
+    c.html(pages.systemPage(nav(c), unwrap(await core(c.env).ops()), c.get('now'))),
+  );
 
   // Static files (styles, icon); anything else is not found.
   app.get('*', async (c) => {

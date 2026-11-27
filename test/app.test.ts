@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env, exports } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ORIGIN, callback, callsOf, coreHooks, post, request, signIn } from './helpers';
 
@@ -53,13 +53,13 @@ describe('who gets in', () => {
   it('refuses forms from other sites', async () => {
     const cookie = await signIn('admin-1!aal2');
     const response = await post(
-      '/partners',
+      '/partners/p-1/status',
       cookie,
-      { org_id: 'x' },
+      { status: 'suspended' },
       { Origin: 'https://evil.example' },
     );
     expect(response.status).toBe(403);
-    expect(await callsOf('createPartner')).toEqual([]);
+    expect(await callsOf('setPartnerStatus')).toEqual([]);
   });
 
   it('serves every staff page', async () => {
@@ -183,41 +183,20 @@ describe('reviews', () => {
 });
 
 describe('partners', () => {
-  it('adds a partner, and refuses one already there', async () => {
-    const cookie = await signIn('admin-1!old');
-    const form = {
+  it('has no way to add a partner outside onboarding', async () => {
+    const cookie = await signIn('admin-1!aal2');
+    const page = await (await request('/partners', { headers: { Cookie: cookie } })).text();
+    expect(page).not.toContain('name="org_id"');
+    expect(page).toContain('href="/onboarding"');
+    const posted = await post('/partners', cookie, {
       org_id: 'org-9',
-      kind: 'vys',
-      legal_name: 'Yeni Varlık A.Ş.',
-      vkn: '9876543210',
-      tax_office: 'Şişli',
-      kep_address: '',
-      reconfirm_days: '21',
-      e_invoice: '1',
-    };
-    const created = await post('/partners', cookie, form);
-    expect(created.status).toBe(303);
-    expect(created.headers.get('Location')).toBe('/partners/p-2?done=saved');
-    expect((await callsOf('createPartner'))[0]).toEqual([
-      'admin-1',
-      {
-        orgId: 'org-9',
-        kind: 'vys',
-        legalName: 'Yeni Varlık A.Ş.',
-        vkn: '9876543210',
-        taxOffice: 'Şişli',
-        eInvoice: true,
-        reconfirmDays: 21,
-      },
-    ]);
-    const again = await post('/partners', cookie, form);
-    expect(again.status).toBe(409);
-    expect(await again.text()).toContain('already a partner');
+      legal_name: 'Kestirme A.Ş.',
+    });
+    expect(posted.status).toBe(404);
   });
 
   it('keeps support from changing partners', async () => {
     const cookie = await signIn('support-1!aal2');
-    expect((await post('/partners', cookie, { org_id: 'org-9' })).status).toBe(403);
     expect((await post('/partners/p-1/status', cookie, { status: 'suspended' })).status).toBe(403);
   });
 
@@ -538,5 +517,119 @@ describe('audit', () => {
     expect(
       (await request('/audit?subject=%3Cscript%3E', { headers: { Cookie: support } })).status,
     ).toBe(422);
+  });
+});
+
+describe('agents’ identity', () => {
+  it('shows where each check stands and records the video call', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/agents/agent-1', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('Identity checks');
+    expect(page).toContain('ali@example.com');
+    expect(page).toContain('The registry didn’t answer');
+    expect((await post('/agents/agent-1/video-call', admin, { result: 'passed' })).status).toBe(
+      422,
+    );
+    const recorded = await post('/agents/agent-1/video-call', admin, {
+      seen: '1',
+      result: 'passed',
+    });
+    expect(recorded.headers.get('Location')).toBe('/agents/agent-1?done=call_recorded');
+    expect(await callsOf('recordVideoCall')).toEqual([['admin-1', 'agent-1', true]]);
+    const support = await signIn('support-1!aal2');
+    expect((await post('/agents/agent-1/video-call', support, { seen: '1' })).status).toBe(403);
+  });
+});
+
+describe('privacy', () => {
+  it('finds what is held and deletes it with a reason and a fresh second factor', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const found = await (
+      await request('/privacy?q=34ABC123', { headers: { Cookie: admin } })
+    ).text();
+    expect(found).toContain('Shows a vehicle and its plate');
+    expect(found).toContain('/privacy/evidence/e-1/erase');
+    // An open case's addresses aren't ours to erase; a closed one's are.
+    expect(found).toContain('/privacy/cases/c-1/erase');
+    expect(found).not.toContain('/privacy/cases/c-5/erase');
+    expect(
+      (await post('/privacy/evidence/e-1/erase', admin, { reason: '', q: '34ABC123' })).status,
+    ).toBe(422);
+    const erased = await post('/privacy/evidence/e-1/erase', admin, {
+      reason: 'KVKK 2026/3',
+      q: '34ABC123',
+    });
+    expect(erased.headers.get('Location')).toBe('/privacy?done=erased&q=34ABC123');
+    expect(await callsOf('eraseEvidence')).toContainEqual(['admin-1', 'e-1', 'KVKK 2026/3']);
+    const old = await signIn('admin-1!old');
+    expect(
+      (await post('/privacy/documents/d-1/erase', old, { reason: 'x' })).headers.get('Location'),
+    ).toBe('/signin?second_factor=1&return=%2Fprivacy');
+    const support = await signIn('support-1!aal2');
+    expect((await post('/privacy/cases/c-1/erase', support, { reason: 'x' })).status).toBe(403);
+    expect((await request('/privacy?q=ab', { headers: { Cookie: support } })).status).toBe(422);
+  });
+
+  it('keeps the register of requests', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/privacy', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('Overdue');
+    const opened = await post('/privacy/requests', admin, {
+      kind: 'erasure',
+      subject_kind: 'vehicle',
+      subject_ref: '34 ABC 123',
+      channel: 'KEP',
+      received_at: '2026-11-20',
+    });
+    expect(opened.headers.get('Location')).toBe('/privacy?done=request_opened');
+    expect((await callsOf('openPrivacyRequest'))[0]?.[1]).toMatchObject({
+      kind: 'erasure',
+      subjectRef: '34 ABC 123',
+      receivedAt: Date.parse('2026-11-20T09:00:00Z') / 1000,
+    });
+    expect(
+      (await post('/privacy/requests/pr-1/close', admin, { status: 'done', outcome: '' })).status,
+    ).toBe(422);
+    const closed = await post('/privacy/requests/pr-1/close', admin, {
+      status: 'done',
+      outcome: 'Adresler silindi',
+    });
+    expect(closed.headers.get('Location')).toBe('/privacy?done=request_closed');
+  });
+
+  it('deletes queued files from both buckets and reports back', async () => {
+    const { eraseDueFiles } = await import('../src/index');
+    await env.EVIDENCE.put('claims/cl-1/e-9', new Uint8Array([1]));
+    await env.DOCUMENTS.put('onboarding/ob-1/d-9', new Uint8Array([1]));
+    expect(await eraseDueFiles(env)).toBe(2);
+    expect(await env.EVIDENCE.get('claims/cl-1/e-9')).toBeNull();
+    expect(await env.DOCUMENTS.get('onboarding/ob-1/d-9')).toBeNull();
+    expect((await callsOf('filesErased')).at(-1)).toEqual([
+      ['claims/cl-1/e-9', 'onboarding/ob-1/d-9'],
+    ]);
+    expect(await eraseDueFiles(env)).toBe(0);
+  });
+});
+
+describe('system', () => {
+  it('shows jobs, errors and queues to staff', async () => {
+    const support = await signIn('support-1!aal2');
+    const page = await (await request('/system', { headers: { Cookie: support } })).text();
+    expect(page).toContain('core.notices');
+    expect(page).toContain('Failing');
+    expect(page).toContain('Not running');
+    expect(page).toContain('webhook.disabled');
+    expect((await request('/system')).headers.get('Location')).toBe('/signin?return=%2Fsystem');
+  });
+
+  it('reads Turkish unless English was chosen', async () => {
+    const plain = await exports.default.fetch(new Request('https://merkez.emanet.dev/'));
+    expect(plain.headers.get('Content-Language')).toBe('tr');
+    const english = await exports.default.fetch(
+      new Request('https://merkez.emanet.dev/', { headers: { 'Accept-Language': 'en-US' } }),
+    );
+    expect(english.headers.get('Content-Language')).toBe('tr');
+    const chosen = await exports.default.fetch(new Request('https://merkez.emanet.dev/?lang=en'));
+    expect(chosen.headers.get('Content-Language')).toBe('en');
   });
 });
