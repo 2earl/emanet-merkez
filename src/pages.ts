@@ -8,6 +8,8 @@ import type {
   PayoutRow,
   PayoutRule,
   PriceList,
+  Provider,
+  ProviderRecord,
   ReviewDetail,
   ReviewItem,
   Settings,
@@ -995,8 +997,43 @@ export function settingsPage(
   fresh: boolean,
   noticeText: string | null,
   errorText: string | null,
+  provider: ProviderRecord | null,
+  providerValues: Partial<Record<keyof Provider, string>> | null,
 ): string {
   const act = canChange && fresh;
+  const pv = (key: keyof Provider) =>
+    attr(
+      providerValues?.[key] ?? provider?.details[key] ?? (key === 'email' ? 'legal@2earl.com' : ''),
+    );
+  const providerSection = `<h2>2earl’s company details</h2>
+     <p class="hint">The agreement companies accept names 2earl with these details. Until they are set, companies can read the agreement but not accept it. A change applies to agreements accepted from now on; accepted ones keep their text.</p>
+     ${provider ? '' : '<p class="error">Not set yet: no company can accept the agreement.</p>'}
+     ${
+       act
+         ? `<form method="post" action="/settings/provider" class="stack">
+             <label>Legal name <input name="name" required maxlength="200" value="${pv('name')}"></label>
+             <label>Registered address <input name="address" required maxlength="400" value="${pv('address')}"></label>
+             <div class="grid2">
+               <label>Tax office <input name="taxOffice" required maxlength="100" value="${pv('taxOffice')}"></label>
+               <label>Tax number (VKN) <input name="vkn" required inputmode="numeric" pattern="[0-9]{10}" maxlength="10" value="${pv('vkn')}"></label>
+               <label>MERSİS number <input name="mersis" required inputmode="numeric" pattern="[0-9]{16}" maxlength="16" value="${pv('mersis')}"></label>
+               <label>KEP address <input name="kep" type="email" required maxlength="254" value="${pv('kep')}"></label>
+               <label>Email for notices <input name="email" type="email" required maxlength="254" value="${pv('email')}"></label>
+             </div>
+             <div><button type="submit">Save company details</button></div>
+           </form>`
+         : provider
+           ? `<div class="panel"><dl class="facts">
+               <dt>Legal name</dt><dd>${data(provider.details.name)}</dd>
+               <dt>Registered address</dt><dd>${data(provider.details.address)}</dd>
+               <dt>Tax office and number</dt><dd>${data(`${provider.details.taxOffice} · ${provider.details.vkn}`)}</dd>
+               <dt>MERSİS</dt><dd>${data(provider.details.mersis)}</dd>
+               <dt>KEP</dt><dd>${data(provider.details.kep)}</dd>
+               <dt>Email for notices</dt><dd>${data(provider.details.email)}</dd>
+               <dt>Last changed</dt><dd>${day(provider.updated_at)}</dd>
+             </dl></div>`
+           : ''
+     }`;
   const unit = { hours: 'hours', count: '', percent: '%', lira: '₺' } as const;
   const rows = (Object.keys(SETTING_FORMS) as (keyof Settings)[])
     .map((key) => {
@@ -1026,6 +1063,7 @@ export function settingsPage(
     `${notice(noticeText)}<h1>Settings</h1>
      ${error(errorText)}
      ${canChange && !fresh ? confirmFirst('/settings') : ''}
+     ${providerSection}
      <h2>Rules</h2>
      ${act ? `<form method="post" action="/settings" class="stack">${rows}<div><button type="submit">Save settings</button></div></form>` : `<div class="panel"><dl class="facts">${rows}</dl></div>`}
      <h2>Agents’ pay</h2>

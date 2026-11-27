@@ -534,5 +534,29 @@ export const tr: Catalog = {
       'Şirketin kuruluşu, bilgileri veya ücretleri eksik.',
     'You invited this company, so another admin must approve it.':
       'Bu şirketi siz davet ettiniz; başka bir yöneticinin onaylaması gerekir.',
+
+    // 2earl’s company details
+    '2earl’s company details': '2earl’ün şirket bilgileri',
+    'A company’s tax number has 10 digits.': 'Şirketlerin vergi kimlik numarası 10 hanelidir.',
+    'Companies can’t accept the agreement until 2earl’s company details are set. <0>Set them in Settings</0>':
+      '2earl’ün şirket bilgileri girilene kadar şirketler sözleşmeyi onaylayamaz. <0>Ayarlar’dan girin</0>',
+    'Set them in Settings': 'Ayarlar’dan girin',
+    'Email for notices': 'Bildirim e-postası',
+    'Last changed': 'Son değişiklik',
+    'MERSİS number': 'MERSİS numarası',
+    'Not set yet: no company can accept the agreement.':
+      'Henüz girilmedi: hiçbir şirket sözleşmeyi onaylayamaz.',
+    'Registered address': 'Kayıtlı adres',
+    'Save company details': 'Şirket bilgilerini kaydet',
+    'The agreement companies accept names 2earl with these details. Until they are set, companies can read the agreement but not accept it. A change applies to agreements accepted from now on; accepted ones keep their text.':
+      'Şirketlerin onayladığı sözleşme 2earl’ü bu bilgilerle anar. Bilgiler girilene kadar şirketler sözleşmeyi okuyabilir ama onaylayamaz. Değişiklik bundan sonra onaylanan sözleşmelere uygulanır; onaylanmış olanların metni değişmez.',
+    'A company detail isn’t valid.': 'Şirket bilgilerinden biri geçersiz.',
+    'Enter 2earl’s legal name.': '2earl’ün ticaret unvanını girin.',
+    'Enter the registered address.': 'Kayıtlı adresi girin.',
+    'Enter the tax office.': 'Vergi dairesini girin.',
+    'The MERSİS number has 16 digits.': 'MERSİS numarası 16 hanelidir.',
+    'The KEP address isn’t an email address.': 'KEP adresi geçerli bir e-posta adresi değil.',
+    'The email for notices isn’t an email address.':
+      'Bildirim e-postası geçerli bir e-posta adresi değil.',
   },
 };

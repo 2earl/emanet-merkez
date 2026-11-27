@@ -51,6 +51,7 @@ export function onboardingList(
   canChange: boolean,
   message: string | null,
   values: Record<string, string>,
+  providerMissing: boolean,
 ): string {
   const filters = [
     `<a href="/onboarding"${filter === null ? ' aria-current="page"' : ''}>All</a>`,
@@ -103,7 +104,9 @@ export function onboardingList(
   return layout(
     'Onboarding',
     { ...nav, current: 'onboarding' },
-    `<h1>Onboarding</h1><p>${filters}</p>${table}${form}`,
+    `<h1>Onboarding</h1>
+     ${providerMissing ? '<p class="error">Companies can’t accept the agreement until 2earl’s company details are set. <a href="/settings">Set them in Settings</a></p>' : ''}
+     <p>${filters}</p>${table}${form}`,
   );
 }
 

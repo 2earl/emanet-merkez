@@ -136,3 +136,51 @@ describe('onboarding', () => {
     expect((await request('/onboarding/ob-signed/documents/d-1')).status).toBe(302);
   });
 });
+
+describe('2earl’s company details', () => {
+  beforeEach(async () => {
+    await coreHooks().testReset();
+  });
+
+  const details = {
+    name: '2earl Teknoloji A.Ş.',
+    address: 'Maslak Mah. Büyükdere Cad. No: 255, Sarıyer, İstanbul',
+    taxOffice: 'Maslak',
+    vkn: '0123456789',
+    mersis: '0012345678900015',
+    kep: '2earl@hs01.kep.tr',
+    email: 'legal@2earl.com',
+  };
+
+  it('warns until they are set, and sets them with a fresh second factor', async () => {
+    const owner = await signIn('owner-1!aal2');
+    expect(await (await request('/onboarding', { headers: { Cookie: owner } })).text()).toContain(
+      'Companies can’t accept the agreement until',
+    );
+    const settings = await (await request('/settings', { headers: { Cookie: owner } })).text();
+    expect(settings).toContain('Not set yet');
+    expect(settings).toContain('Save company details');
+
+    const stale = await signIn('owner-1!old');
+    const redirected = await post('/settings/provider', stale, details);
+    expect(redirected.headers.get('Location')).toContain('second_factor=1');
+    const support = await signIn('support-1!aal2');
+    expect((await post('/settings/provider', support, details)).status).toBe(403);
+
+    const bad = await post('/settings/provider', owner, { ...details, vkn: '12' });
+    expect(bad.status).toBe(422);
+    const page = await bad.text();
+    expect(page).toContain('A company’s tax number has 10 digits.');
+    // What was typed stays in the form.
+    expect(page).toContain('Maslak Mah.');
+
+    const saved = await post('/settings/provider', owner, details);
+    expect(saved.headers.get('Location')).toBe('/settings?done=saved');
+    expect((await callsOf('setProvider')).at(-1)).toEqual(['owner-1', details]);
+    expect(
+      await (await request('/onboarding', { headers: { Cookie: owner } })).text(),
+    ).not.toContain('Companies can’t accept the agreement until');
+    const readOnly = await (await request('/settings', { headers: { Cookie: support } })).text();
+    expect(readOnly).toContain('2earl Teknoloji A.Ş.');
+  });
+});

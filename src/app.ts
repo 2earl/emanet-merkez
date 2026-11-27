@@ -97,9 +97,20 @@ const ERROR_TEXT: Record<string, string> = {
   not_signed: 'The company hasn’t accepted the agreement (or it was decided already).',
   incomplete: 'The company’s organization, details or fees are missing.',
   four_eyes: 'You invited this company, so another admin must approve it.',
+  invalid_provider: 'A company detail isn’t valid.',
 };
 /** The core's detail says which part was wrong; only where it helps the reader. */
 const WITH_DETAIL = new Set(['missing_evidence', 'invalid_price_list', 'invalid_payout_rule']);
+/** Which of 2earl's company details is wrong. */
+const PROVIDER_FIELD: Record<string, string> = {
+  name: 'Enter 2earl’s legal name.',
+  address: 'Enter the registered address.',
+  taxOffice: 'Enter the tax office.',
+  vkn: 'A company’s tax number has 10 digits.',
+  mersis: 'The MERSİS number has 16 digits.',
+  kep: 'The KEP address isn’t an email address.',
+  email: 'The email for notices isn’t an email address.',
+};
 const errorText = (error: string, detail?: string) =>
   `${ERROR_TEXT[error] ?? 'That didn’t work.'}${detail && WITH_DETAIL.has(error) ? ` (${detail})` : ''}`;
 
@@ -748,8 +759,17 @@ export function createApp(now: () => number) {
 
   // ---- Settings ---------------------------------------------------------------------------------
 
-  const showSettings = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
-    const [settings, rule] = await Promise.all([core(c.env).settings(), core(c.env).payoutRule()]);
+  const showSettings = async (
+    c: AppContext,
+    error: string | null,
+    status: 200 | 422 = 200,
+    providerValues: Record<string, string> | null = null,
+  ) => {
+    const [settings, rule, provider] = await Promise.all([
+      core(c.env).settings(),
+      core(c.env).payoutRule(),
+      core(c.env).provider(),
+    ]);
     return c.html(
       pages.settingsPage(
         nav(c),
@@ -759,10 +779,33 @@ export function createApp(now: () => number) {
         fresh(c),
         done(c),
         error,
+        unwrap(provider),
+        providerValues,
       ),
       status,
     );
   };
+
+  app.post('/settings/provider', async (c) => {
+    const denied = sensitive(c, '/settings');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).setProvider(uid(c), {
+      name: v.name ?? '',
+      address: v.address ?? '',
+      taxOffice: v.taxOffice ?? '',
+      vkn: v.vkn ?? '',
+      mersis: v.mersis ?? '',
+      kep: v.kep ?? '',
+      email: v.email ?? '',
+    });
+    if (!result.ok) {
+      const field =
+        result.error === 'invalid_provider' ? PROVIDER_FIELD[result.detail ?? ''] : null;
+      return showSettings(c, field ?? errorText(result.error), 422, v);
+    }
+    return c.redirect('/settings?done=saved', 303);
+  });
 
   app.get('/settings', (c) => showSettings(c, null));
 

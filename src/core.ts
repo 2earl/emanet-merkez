@@ -329,7 +329,25 @@ export interface Invitation {
   note?: string;
 }
 
+/** 2earl's own company details, as the agreement names it (emanet-core src/provider.ts). */
+export interface Provider {
+  name: string;
+  address: string;
+  taxOffice: string;
+  vkn: string;
+  mersis: string;
+  kep: string;
+  email: string;
+}
+export interface ProviderRecord {
+  details: Provider;
+  updated_by: string;
+  updated_at: number;
+}
+
 export interface ControlApi {
+  provider(): Promise<Result<ProviderRecord | null>>;
+  setProvider(staffId: string, input: Record<string, unknown>): Promise<Result<Provider>>;
   inviteCompany(
     staffId: string,
     input: Invitation,
