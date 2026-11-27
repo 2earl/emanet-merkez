@@ -99,7 +99,30 @@ function seed() {
         withholding_kurus: 0, net_kurus: 3000000, status: 'ready', ordered_by: null, approved_by: null, bank_ref: null, created_at: t - 7200 },
     ],
     receipts: new Set(),
+    onboardings: new Map([
+      ['ob-signed', onboarding('ob-signed', 'signed', 'admin-1', t)],
+      ['ob-progress', onboarding('ob-progress', 'in_progress', 'admin-1', t)],
+      ['ob-invited', onboarding('ob-invited', 'invited', 'admin-1', t)],
+    ]),
   };
+}
+function onboarding(id, status, invitedBy, t) {
+  const signed = status === 'signed';
+  return { id, kind: 'bank', company: 'Örnek Bank', contact_name: 'Ayşe Yılmaz', contact_email: 'ops@ornek.example',
+    locale: 'tr', status, invited_by: invitedBy, invited_at: t - 86400 * 2, sent_at: t - 86400 * 2,
+    expires_at: t + 86400 * 12, signed_at: signed ? t - 3600 : null, decided_at: null, partner_id: null,
+    updated_at: t - 3600, price_list: { default_kurus: 1500000, rules: [{ make: 'Ford', fee_kurus: 2000000 }] },
+    reconfirm_days: 14, note: 'Met at the conference', claimed_by: status === 'invited' ? null : 'joiner-1',
+    org_id: status === 'invited' ? null : 'org_ornek',
+    details: status === 'invited' ? null : { legalName: 'Örnek Bank A.Ş.', address: 'Büyükdere Cad. 1, İstanbul',
+      taxOffice: 'Büyük Mükellefler', vkn: '1234567890', mersis: null, kep: 'ornek@hs01.kep.tr',
+      signatoryName: 'Mehmet Demir', signatoryTitle: 'Genel Müdür Yardımcısı', billingEmail: 'fatura@ornek.example',
+      operationsName: 'Ayşe Yılmaz', operationsEmail: 'ops@ornek.example', operationsPhone: '+90 212 555 00 00', eInvoice: true },
+    contract_version: signed ? '2026-11-27-draft' : null, contract_sha256: signed ? 'ab'.repeat(32) : null,
+    contract_text: signed ? 'EMANET HİZMET SÖZLEŞMESİ' : null, signer_name: signed ? 'Ayşe Yılmaz' : null,
+    signer_title: signed ? 'Operasyon Müdürü' : null, decision_reason: null,
+    documents: signed ? [{ id: 'd-1', kind: 'signature_circular', file_ref: 'onboarding/' + id + '/d-1', sha256: 'cd'.repeat(32),
+      file_name: 'imza.pdf', content_type: 'application/pdf', size: 1200, uploaded_by: 'joiner-1', uploaded_at: t - 7200 }] : [] };
 }
 seed();
 const log = (method, args) => s.calls.push([method, ...args]);
@@ -265,6 +288,56 @@ export class ControlApi extends WorkerEntrypoint {
       { code: '600', name: 'Yurt İçi Satışlar', debit_kurus: 0, credit_kurus: 1000000 },
       { code: '740', name: 'Hizmet Üretim Maliyeti', debit_kurus: 500000, credit_kurus: 0 },
     ]);
+  }
+  async inviteCompany(staffId, input) {
+    log('inviteCompany', [staffId, input]);
+    if (!input.company) return fail('missing_company');
+    for (const o of s.onboardings.values()) if (o.contact_email === input.contactEmail && ['invited', 'in_progress', 'signed'].includes(o.status)) return fail('already_invited');
+    const id = 'ob-' + crypto.randomUUID().slice(0, 8);
+    const o = onboarding(id, 'invited', staffId, now());
+    Object.assign(o, { company: input.company, contact_name: input.contactName, contact_email: input.contactEmail, price_list: input.priceList });
+    s.onboardings.set(id, o);
+    return ok({ id, emailed: true });
+  }
+  async onboardings(status) {
+    return ok([...s.onboardings.values()].filter((o) => !status || o.status === status)
+      .map((o) => ({ ...o, legal_name: o.details ? o.details.legalName : null })));
+  }
+  async onboarding(id) { const o = s.onboardings.get(id); return o ? ok(o) : fail('not_found'); }
+  async resendInvitation(staffId, id) {
+    log('resendInvitation', [staffId, id]);
+    const o = s.onboardings.get(id);
+    if (!o) return fail('not_found');
+    if (!['invited', 'in_progress', 'expired'].includes(o.status)) return fail('not_open');
+    return ok({ emailed: true });
+  }
+  async cancelOnboarding(staffId, id, reason) {
+    log('cancelOnboarding', [staffId, id, reason]);
+    const o = s.onboardings.get(id);
+    if (!reason) return fail('invalid_reason');
+    if (!o || !['invited', 'in_progress', 'signed', 'expired'].includes(o.status)) return fail('not_open');
+    o.status = 'cancelled'; o.decision_reason = reason; return ok(null);
+  }
+  async returnOnboarding(staffId, id, reason) {
+    log('returnOnboarding', [staffId, id, reason]);
+    const o = s.onboardings.get(id);
+    if (!reason) return fail('invalid_reason');
+    if (!o || o.status !== 'signed') return fail('not_signed');
+    o.status = 'in_progress'; o.signed_at = null; o.decision_reason = reason; return ok({ emailed: true });
+  }
+  async rejectOnboarding(staffId, id, reason) {
+    log('rejectOnboarding', [staffId, id, reason]);
+    const o = s.onboardings.get(id);
+    if (!reason) return fail('invalid_reason');
+    if (!o || !['in_progress', 'signed'].includes(o.status)) return fail('not_open');
+    o.status = 'rejected'; o.decision_reason = reason; return ok({ emailed: true });
+  }
+  async approveOnboarding(staffId, id) {
+    log('approveOnboarding', [staffId, id]);
+    const o = s.onboardings.get(id);
+    if (!o || o.status !== 'signed') return fail('not_signed');
+    if (o.invited_by === staffId) return fail('four_eyes');
+    o.status = 'approved'; o.partner_id = 'p-new'; return ok({ partnerId: 'p-new', emailed: true });
   }
   async testCalls() { return s.calls; }
   async testReset() { seed(); }

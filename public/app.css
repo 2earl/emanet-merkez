@@ -235,16 +235,20 @@ th.num {
 .status.kyc_pending,
 .status.issued,
 .status.ready,
-.status.awaiting_receipt {
+.status.awaiting_receipt,
+.status.in_progress {
   color: var(--wait);
 }
 
 .status.suspended,
-.status.banned {
+.status.banned,
+.status.signed,
+.status.rejected {
   color: var(--action);
 }
 
-.status.cancelled {
+.status.cancelled,
+.status.expired {
   color: var(--off);
 }
 
@@ -546,4 +550,21 @@ h3 {
 
 .panel > h2:first-child {
   margin-top: 0;
+}
+
+/* An accepted agreement, as the company saw it. */
+details > summary {
+  cursor: pointer;
+  margin: 0.5rem 0;
+}
+
+article.contract {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
