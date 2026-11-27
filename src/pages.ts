@@ -1,5 +1,6 @@
 import type {
   AgentRow,
+  AuditRow,
   BalanceRow,
   EvidenceKind,
   FieldRow,
@@ -47,7 +48,7 @@ const MARK =
   '</svg>';
 
 export type Section =
-  'home' | 'reviews' | 'onboarding' | 'partners' | 'agents' | 'money' | 'settings';
+  'home' | 'reviews' | 'onboarding' | 'partners' | 'agents' | 'money' | 'settings' | 'audit';
 
 export interface Nav {
   signedIn: boolean;
@@ -98,6 +99,7 @@ export function layout(title: string, nav: Nav, body: string): string {
         ${link('agents', '/agents', 'Agents')}
         ${link('money', '/money', 'Money')}
         ${link('settings', '/settings', 'Settings')}
+        ${link('audit', '/audit', 'Audit')}
       </nav>`
     : '';
   const who = nav.signedIn
@@ -299,10 +301,36 @@ const EVIDENCE_LABEL: Record<EvidenceKind, string> = {
   yediemin_vehicle: 'Vehicle in the car park',
 };
 
+/** Minutes or hours, for how soon after claiming an agent reported a sighting. */
+function span(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return data(`${String(minutes)} min`);
+  return data(`${(seconds / 3600).toFixed(1)} h`);
+}
+
+const metres = (m: number) => data(m < 1000 ? `${String(m)} m` : `${(m / 1000).toFixed(1)} km`);
+
+/** A report within this of claiming, or this far from every known place, deserves a second look. */
+const SOON_SECONDS = 15 * 60;
+const FAR_METRES = 5000;
+
+function signalsPanel(s: ReviewDetail['signals']): string {
+  if (!s) return '';
+  const flag = (on: boolean) => (on ? ' <span class="status rejected">Look twice</span>' : '');
+  return `<h2>Before you decide</h2>
+    <div class="panel"><dl class="facts">
+      <dt>From claim to sighting</dt><dd>${s.seconds_to_sighting === null ? '—' : `${span(s.seconds_to_sighting)}${flag(s.seconds_to_sighting < SOON_SECONDS)}`}</dd>
+      <dt>Sighting to the nearest known place</dt><dd>${s.nearest_place_m === null ? 'No place with coordinates' : `${metres(s.nearest_place_m)}${flag(s.nearest_place_m > FAR_METRES)}`}</dd>
+      <dt>Agent’s deliveries</dt><dd translate="no">${String(s.agent_deliveries)}</dd>
+      <dt>Agent’s strikes</dt><dd translate="no">${String(s.agent_strikes)}${flag(s.agent_strikes > 0)}</dd>
+    </dl></div>`;
+}
+
 export function reviewDetail(
   nav: Nav,
   r: ReviewDetail,
   role: StaffRole,
+  fresh: boolean,
   errorText: string | null,
 ): string {
   const kind = r.item.kind;
@@ -322,6 +350,7 @@ export function reviewDetail(
                 <a href="/reviews/${attr(r.item.id)}/evidence/${attr(e.id)}"><img src="/reviews/${attr(r.item.id)}/evidence/${attr(e.id)}" alt="${attr(EVIDENCE_LABEL[e.kind])}" loading="lazy"></a>
                 <span>${EVIDENCE_LABEL[e.kind]}</span>
                 <span class="hint">Taken ${moment(e.exif_time)} · received ${moment(e.created_at)}</span>
+                ${claim && e.exif_time !== null && e.exif_time < claim.claimed_at - 600 ? '<span class="status rejected">Taken before the claim</span>' : ''}
               </li>`,
             )
             .join('')}</ul>`;
@@ -332,6 +361,7 @@ export function reviewDetail(
         <dt>Agent</dt><dd>${claim?.agent_name ? data(claim.agent_name) : '—'}</dd>
         <dt>Claimed</dt><dd>${moment(claim?.claimed_at ?? null)}</dd>
       </dl></div>
+      ${signalsPanel(r.signals)}
       <h2>Evidence</h2>
       <p class="hint">Check that the plate and chassis number on the custodian’s receipt match this vehicle, and that the photos were taken after the claim.</p>
       ${gallery}
@@ -360,14 +390,28 @@ export function reviewDetail(
       }
       ${error(errorText)}
       ${
-        changeAllowed && claim && cases.length > 0
-          ? `<form method="post" action="/reviews/${attr(r.item.id)}/deliver" class="actions">
-              <button type="submit">Confirm the vehicle is in custody</button>
-            </form>
-            <p class="hint">Every case above is closed as delivered, each partner is told and invoiced, and the agent’s payout is created.</p>`
-          : changeAllowed
+        !changeAllowed
+          ? '<p class="hint">An owner or admin confirms deliveries.</p>'
+          : !claim
             ? ''
-            : '<p class="hint">An owner or admin confirms deliveries.</p>'
+            : !fresh
+              ? confirmFirst(`/reviews/${r.item.id}`)
+              : `${
+                  cases.length > 0
+                    ? `<h2>Confirm</h2>
+                       <form method="post" action="/reviews/${attr(r.item.id)}/deliver" class="actions">
+                         <button type="submit">Confirm the vehicle is in custody</button>
+                       </form>
+                       <p class="hint">Every case above is closed as delivered, each partner is told and invoiced, and the agent’s payout is created.</p>`
+                    : ''
+                }
+                <h2>Don’t accept</h2>
+                <form method="post" action="/reviews/${attr(r.item.id)}/dismiss" class="stack">
+                  <label>Reason for the agent <input name="reason" required maxlength="200"></label>
+                  <label class="check"><input type="checkbox" name="strike" value="1"> Count a strike against the agent (a false or careless report).</label>
+                  <p class="hint">The claim ends and these photos can’t be used again. The agent reads your reason and can’t take this vehicle again for a while. No partner is told and nothing is booked.</p>
+                  <div><button class="secondary" type="submit">Don’t accept this delivery</button></div>
+                </form>`
       }`;
   } else {
     const c = r.case;
@@ -761,8 +805,10 @@ export function agentDetail(
           </form>`
         : confirmFirst(path)
       : '';
-  const status = canChange
-    ? `<h2>Change status</h2>
+  const needsConfirm = canChange && !fresh;
+  const status =
+    canChange && fresh
+      ? `<h2>Change status</h2>
        <form method="post" action="${path}/status" class="stack">
          <div class="grid2">
            <label>New status <select name="status">${AGENT_STATUSES.filter((s) => s !== a.status)
@@ -773,7 +819,7 @@ export function agentDetail(
          <p class="hint">Suspending or banning ends the agent’s open claims at once.</p>
          <div><button class="secondary" type="submit">Change status</button></div>
        </form>`
-    : '';
+      : '';
   return layout(
     'Agent',
     { ...nav, current: 'agents' },
@@ -792,6 +838,7 @@ export function agentDetail(
        <dt>Strikes</dt><dd translate="no">${String(a.strikes)}</dd>
      </dl></div>
      ${check}
+     ${needsConfirm ? confirmFirst(path) : ''}
      ${iban}
      ${status}`,
   );
@@ -842,7 +889,15 @@ export function money(
             (i) => `<tr>
               <td>${day(i.issued_at)}</td>
               <td><a href="/partners/${attr(i.partner_id)}">${data(i.legal_name)}</a></td>
-              <td>${i.number ? data(i.number) : '<span class="hint">Waiting for the e-invoice number</span>'}</td>
+              <td>${
+                i.number
+                  ? data(i.number)
+                  : act && i.status !== 'cancelled'
+                    ? `<form method="post" action="/money/invoices/${attr(i.id)}/number" class="inline">
+                        <label class="sr">E-invoice number <input name="number" required maxlength="32" placeholder="E-invoice number" autocomplete="off"></label>
+                        <button class="secondary" type="submit">Save number</button></form>`
+                    : '<span class="hint">Waiting for the e-invoice number</span>'
+              }</td>
               <td class="num" translate="no">${String(i.cases)}</td>
               <td class="num">${lira(i.total_kurus)}</td>
               <td class="num">${lira(i.paid_kurus)}</td>
@@ -948,6 +1003,72 @@ export function ledger(nav: Nav, rows: BalanceRow[]): string {
        .join('')}</tbody>
      <tfoot><tr><th colspan="2">Total</th><th class="num">${lira(debit)}</th><th class="num">${lira(credit)}</th><th class="num">${debit === credit ? 'Balanced' : '<span class="error">Not balanced</span>'}</th></tr></tfoot>
      </table>`,
+  );
+}
+
+// ---- Audit ----------------------------------------------------------------------------------------
+
+/** A short, safe rendering of an event's detail: keys and plain values only. */
+function auditDetail(detail: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(detail)) {
+    if (value === null || value === undefined || value === '') continue;
+    const shown =
+      typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ? String(value)
+        : JSON.stringify(value);
+    parts.push(`${key}: ${shown.length > 80 ? `${shown.slice(0, 80)}…` : shown}`);
+    if (parts.length === 4) break;
+  }
+  return parts.length === 0 ? '' : data(parts.join(' · '));
+}
+
+export function auditPage(
+  nav: Nav,
+  events: AuditRow[],
+  nextBefore: number | null,
+  filter: { subject: string; actor: string },
+  errorText: string | null,
+): string {
+  const query = (extra: Record<string, string>) => {
+    const params = new URLSearchParams();
+    if (filter.subject) params.set('subject', filter.subject);
+    if (filter.actor) params.set('actor', filter.actor);
+    for (const [key, value] of Object.entries(extra)) params.set(key, value);
+    const text = params.toString();
+    return text ? `/audit?${esc(text)}` : '/audit';
+  };
+  const by = (key: 'subject' | 'actor', value: string) =>
+    `<a href="/audit?${key}=${encodeURIComponent(value)}" translate="no">${esc(value)}</a>`;
+  const table =
+    events.length === 0
+      ? '<p class="panel">Nothing recorded here.</p>'
+      : `<table><thead><tr><th>When</th><th>Who</th><th>What</th><th>On</th><th>Details</th></tr></thead><tbody>${events
+          .map(
+            (e) => `<tr>
+              <td>${moment(e.at)}</td>
+              <td>${by('actor', e.actor)}</td>
+              <td>${data(e.action)}</td>
+              <td>${by('subject', e.subject)}</td>
+              <td>${auditDetail(e.detail)}</td>
+            </tr>`,
+          )
+          .join('')}</tbody></table>`;
+  return layout(
+    'Audit',
+    { ...nav, current: 'audit' },
+    `<h1>Audit</h1>
+     <p class="lede">Everything done in Emanet, newest first: by staff, partners’ people, agents and the system. Nothing here can be changed or removed. Looking someone up is recorded too.</p>
+     ${error(errorText)}
+     <form method="get" action="/audit" class="stack">
+       <div class="grid2">
+         <label>On (subject) <input name="subject" maxlength="120" autocomplete="off" placeholder="partner:… claim:… agent:…" value="${attr(filter.subject)}"></label>
+         <label>By (actor) <input name="actor" maxlength="120" autocomplete="off" placeholder="staff:… agent:…" value="${attr(filter.actor)}"></label>
+       </div>
+       <div><button class="secondary" type="submit">Show</button> ${filter.subject || filter.actor ? '<a href="/audit">Show everything</a>' : ''}</div>
+     </form>
+     ${table}
+     ${nextBefore === null ? '' : `<p><a href="${query({ before: String(nextBefore) })}">Older</a></p>`}`,
   );
 }
 

@@ -121,10 +121,44 @@ describe('reviews', () => {
     expect((await post('/reviews/r-del/deliver', support)).status).toBe(403);
     const page = await (await request('/reviews/r-del', { headers: { Cookie: support } })).text();
     expect(page).not.toContain('Confirm the vehicle is in custody');
-    const admin = await signIn('admin-1!old');
+    // It creates money owed: a second factor from the last 15 minutes.
+    const old = await signIn('admin-1!old');
+    expect((await post('/reviews/r-del/deliver', old)).headers.get('Location')).toBe(
+      '/signin?second_factor=1&return=%2Freviews%2Fr-del',
+    );
+    const oldPage = await (await request('/reviews/r-del', { headers: { Cookie: old } })).text();
+    expect(oldPage).not.toContain('Confirm the vehicle is in custody');
+    expect(oldPage).toContain('Confirm it’s you');
+    expect(await callsOf('confirmDelivery')).toEqual([]);
+    const admin = await signIn('admin-1!aal2');
     const response = await post('/reviews/r-del/deliver', admin);
     expect(response.headers.get('Location')).toBe('/reviews?done=delivered');
     expect(await callsOf('confirmDelivery')).toEqual([['admin-1', 'cl-1']]);
+  });
+
+  it('shows what to look at twice, and doesn’t accept a delivery with a reason', async () => {
+    const support = await signIn('support-1!aal2');
+    expect((await post('/reviews/r-del/dismiss', support, { reason: 'x' })).status).toBe(403);
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/reviews/r-del', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('Before you decide');
+    expect(page).toContain('7.4 km');
+    expect(page).toContain('Look twice');
+    expect(page).toContain('Don’t accept this delivery');
+    expect((await post('/reviews/r-del/dismiss', admin, { reason: '' })).status).toBe(422);
+    expect((await post('/reviews/r-vin/dismiss', admin, { reason: 'x' })).status).toBe(404);
+    const response = await post('/reviews/r-del/dismiss', admin, {
+      reason: 'The receipt shows another plate',
+      strike: '1',
+    });
+    expect(response.headers.get('Location')).toBe('/reviews?done=dismissed');
+    expect((await callsOf('rejectDelivery')).at(-1)).toEqual([
+      'admin-1',
+      'cl-1',
+      // The rule mistakes this key for String.prototype.strike.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      { reason: 'The receipt shows another plate', strike: true },
+    ]);
   });
 
   it('serves evidence only for an open delivery review', async () => {
@@ -271,7 +305,14 @@ describe('partners', () => {
 
 describe('agents', () => {
   it('shows an agent’s details and changes their status with a reason', async () => {
-    const cookie = await signIn('admin-1!old');
+    // Activating lets the agent read addresses: a second factor from the last 15 minutes.
+    const old = await signIn('admin-1!old');
+    expect(
+      (await post('/agents/agent-1/status', old, { status: 'active', reason: 'x' })).headers.get(
+        'Location',
+      ),
+    ).toBe('/signin?second_factor=1&return=%2Fagents%2Fagent-1');
+    const cookie = await signIn('admin-1!aal2');
     const page = await (await request('/agents/agent-1', { headers: { Cookie: cookie } })).text();
     expect(page).toContain('tel:+905321234567');
     expect(page).toContain('TR330006100519786457841326');
@@ -406,6 +447,24 @@ describe('money', () => {
     expect(await nothing.text()).toContain('Nothing to invoice');
   });
 
+  it('records the e-invoice number on an invoice', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/money', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('/money/invoices/i-1/number');
+    expect((await post('/money/invoices/i-1/number', admin, { number: 'a b' })).status).toBe(422);
+    expect(
+      (await post('/money/invoices/i-9/number', admin, { number: 'EMA2026000000001' })).status,
+    ).toBe(422);
+    const saved = await post('/money/invoices/i-1/number', admin, { number: 'ema2026000000001' });
+    expect(saved.headers.get('Location')).toBe('/money?done=numbered#invoices');
+    const after = await (await request('/money', { headers: { Cookie: admin } })).text();
+    expect(after).toContain('EMA2026000000001');
+    const support = await signIn('support-1!aal2');
+    expect((await post('/money/invoices/i-1/number', support, { number: 'X123' })).status).toBe(
+      403,
+    );
+  });
+
   it('shows a balanced trial balance', async () => {
     const cookie = await signIn('support-1!aal2');
     const page = await (await request('/money/ledger', { headers: { Cookie: cookie } })).text();
@@ -455,5 +514,29 @@ describe('settings', () => {
     expect(await callsOf('setPayoutRule')).toEqual([
       ['admin-1', { share_bp: 4500, min_kurus: 200_000, max_kurus: 2_000_000 }],
     ]);
+  });
+});
+
+describe('audit', () => {
+  it('shows the log to staff only, filtered and paged', async () => {
+    expect((await request('/audit')).headers.get('Location')).toBe('/signin?return=%2Faudit');
+    const outsider = await signIn('outsider!aal2');
+    expect((await request('/audit', { headers: { Cookie: outsider } })).status).toBe(403);
+    const support = await signIn('support-1!aal2');
+    const page = await (await request('/audit', { headers: { Cookie: support } })).text();
+    expect(page).toContain('delivery.rejected');
+    expect(page).toContain('/audit?actor=staff%3Aadmin-1');
+    expect(page).toContain('Older');
+    const filtered = await request('/audit?subject=case:c-1', { headers: { Cookie: support } });
+    const text = await filtered.text();
+    expect(text).toContain('case.created');
+    expect(text).not.toContain('delivery.rejected');
+    expect((await callsOf('audit')).at(-1)).toEqual([
+      'support-1',
+      { subject: 'case:c-1', limit: 100 },
+    ]);
+    expect(
+      (await request('/audit?subject=%3Cscript%3E', { headers: { Cookie: support } })).status,
+    ).toBe(422);
   });
 });
