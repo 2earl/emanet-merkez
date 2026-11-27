@@ -568,5 +568,14 @@ export const tr: Catalog = {
     'Privacy notice': 'Gizlilik',
     'Skip to content': 'İçeriğe geç',
     'Terms of use': 'Kullanım şartları',
+    'Email notices': 'E-posta bildirimleri',
+    Notices: 'Bildirimler',
+    'Operations contact': 'Operasyon sorumlusu',
+    'On: vehicles in custody (hourly), cases about to expire (daily)':
+      'Açık: yediemine ulaşan araçlar (saatlik), süresi dolmak üzere olan dosyalar (günlük)',
+    Off: 'Kapalı',
+    'No contact to send to': 'Gönderilecek iletişim adresi yok',
+    'Turn notices on': 'Bildirimleri aç',
+    'Turn notices off': 'Bildirimleri kapat',
   },
 };

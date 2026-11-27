@@ -190,3 +190,23 @@ describe('2earl’s company details', () => {
     expect(readOnly).toContain('2earl Teknoloji A.Ş.');
   });
 });
+
+describe('partner email notices', () => {
+  beforeEach(async () => {
+    await coreHooks().testReset();
+  });
+
+  it('shows the contact and turns notices off and on', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/partners/p-1', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('ops@testbank.example');
+    expect(page).toContain('Turn notices off');
+    const off = await post('/partners/p-1/notices', admin, { on: '0' });
+    expect(off.headers.get('Location')).toBe('/partners/p-1?done=saved');
+    expect(await callsOf('setPartnerNotices')).toEqual([['admin-1', 'p-1', false]]);
+    const after = await (await request('/partners/p-1', { headers: { Cookie: admin } })).text();
+    expect(after).toContain('Turn notices on');
+    const support = await signIn('support-1!aal2');
+    expect((await post('/partners/p-1/notices', support, { on: '1' })).status).toBe(403);
+  });
+});

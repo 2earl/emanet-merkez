@@ -59,7 +59,8 @@ function seed() {
     calls: [],
     partners: new Map([['p-1', { id: 'p-1', org_id: 'org-1', kind: 'bank', legal_name: 'Test Bankası A.Ş.',
       vkn: '1234567890', tax_office: 'Kadıköy', kep_address: null, e_invoice: 1, status: 'active',
-      reconfirm_days: 14, created_at: t - 86400 * 30, active_cases: 3, delivered_cases: 1 }]]),
+      reconfirm_days: 14, created_at: t - 86400 * 30, active_cases: 3, delivered_cases: 1,
+      contact_email: 'ops@testbank.example', billing_email: 'fatura@testbank.example', mail_notices: 1 }]]),
     prices: new Map([['p-1', { list: { default_kurus: 1000000, rules: [{ make: 'Renault', fee_kurus: 1200000 }] }, from: t - 86400 }]]),
     fields: [{ id: 'f-1', partner_id: 'p-1', entity: 'case', key: 'portfolio', label_tr: 'Portföy',
       label_en: 'Portfolio', type: 'enum', enum_values: '["A","B"]', required: 0, visibility: 'partner', deprecated_at: null }],
@@ -296,6 +297,12 @@ export class ControlApi extends WorkerEntrypoint {
   }
   async recordView(staffId, subject, what) { log('recordView', [staffId, subject, what]); return ok(null); }
   async provider() { return ok(s.provider); }
+  async setPartnerNotices(staffId, partnerId, on) {
+    log('setPartnerNotices', [staffId, partnerId, on]);
+    const p = s.partners.get(partnerId);
+    if (!p) return fail('not_found');
+    p.mail_notices = on ? 1 : 0; return ok(null);
+  }
   async setProvider(staffId, input) {
     log('setProvider', [staffId, input]);
     if (!/^[0-9]{10}$/.test(input.vkn)) return fail('invalid_provider', 'vkn');

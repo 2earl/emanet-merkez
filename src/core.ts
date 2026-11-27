@@ -45,6 +45,11 @@ export interface PartnerRow {
   created_at: number;
   active_cases: number;
   delivered_cases: number;
+  /** Operations contact and invoice address, from onboarding. */
+  contact_email?: string | null;
+  billing_email?: string | null;
+  /** 1: the contact gets delivery and expiry emails. */
+  mail_notices?: number;
 }
 
 export interface PriceRule {
@@ -358,6 +363,7 @@ export interface ControlApi {
   /** Records that a staff member opened a document or evidence (personal data). */
   recordView(staffId: string, subject: string, what: string): Promise<Result<null>>;
   provider(): Promise<Result<ProviderRecord | null>>;
+  setPartnerNotices(staffId: string, partnerId: string, on: boolean): Promise<Result<null>>;
   setProvider(staffId: string, input: Record<string, unknown>): Promise<Result<Provider>>;
   inviteCompany(
     staffId: string,
