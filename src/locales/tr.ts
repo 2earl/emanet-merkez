@@ -18,6 +18,14 @@ export const tr: Catalog = {
   ],
   monthsShort: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
   messages: {
+    'Give the reply a name of 2 to 60 characters, in both languages.':
+      'Yanıta iki dilde de 2 ile 60 karakter arasında bir ad verin.',
+    'Choose who the reply is offered for.': 'Yanıtın kimin için sunulacağını seçin.',
+    'There are 30 saved replies already. Delete one first.':
+      'Zaten 30 kayıtlı yanıt var. Önce birini silin.',
+    'Saved. It is offered on tickets from now on.': 'Kaydedildi. Bundan sonra mesajlarda sunulur.',
+    'Deleted. Messages already sent with it are unchanged.':
+      'Silindi. Bununla gönderilmiş yanıtlar değişmedi.',
     Waiting: 'Bekliyor',
     Review: 'İncele',
     Breadcrumb: 'Sayfa yolu',

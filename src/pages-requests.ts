@@ -14,6 +14,7 @@ import type {
   RetentionOverview,
   RetentionRow,
   TicketRow,
+  SavedReply,
   TicketThread,
   ErasureOverview,
 } from './core';
@@ -775,11 +776,12 @@ export function supportInbox(
 }
 
 /**
- * Saved replies: answers staff give often, written once. The text is Turkish because the people
- * who write to us are; staff read it and change it before sending. `for` limits a reply to agents
- * or companies. Choosing one reloads the page with the text in the reply box (no script).
+ * Saved replies: answers staff give often, kept in core and edited under Support → Saved replies.
+ * The text is Turkish because the people who write to us are; staff change it before sending.
+ * Choosing one reloads the page with the text in the reply box (no script). This list is used
+ * only when core has none to give (before core's migration 0015 is deployed).
  */
-export const SAVED_REPLIES: {
+const BUILT_IN: {
   key: string;
   label: [string, string];
   for?: 'agent' | 'partner';
@@ -827,6 +829,93 @@ export const SAVED_REPLIES: {
   },
 ];
 
+/** Core's replies, or the built-in ones when core has none. */
+export function repliesOrBuiltIn(list: SavedReply[] | null): SavedReply[] {
+  if (list && list.length > 0) return list;
+  return BUILT_IN.map((r, i) => ({
+    id: r.key,
+    title_en: r.label[0],
+    title_tr: r.label[1],
+    audience: r.for ?? 'all',
+    body: r.text,
+    position: i * 10,
+    updated_by: 'system',
+    updated_at: 0,
+  }));
+}
+
+const AUDIENCE: Record<SavedReply['audience'], [string, string]> = {
+  all: ['Everyone', 'Herkes'],
+  agent: ['Agents (Saha)', 'Görevliler (Saha)'],
+  partner: ['Companies (Kurumsal)', 'Şirketler (Kurumsal)'],
+};
+
+/** Support → Saved replies: every staff member can add, change and delete them; each change is audited. */
+export function repliesPage(
+  nav: Nav,
+  list: SavedReply[],
+  errorText: string | null,
+  noticeText: string | null,
+  /** What was typed into a form that came back with an error, keyed by the reply's id or 'new'. */
+  values: { id: string; v: Record<string, string> } | null = null,
+): string {
+  const form = (r: SavedReply | null) => {
+    const id = r?.id ?? 'new';
+    const v = values?.id === id ? values.v : null;
+    const val = (k: 'title_en' | 'title_tr' | 'audience' | 'body') =>
+      v?.[k] ?? (r ? r[k] : k === 'audience' ? 'all' : '');
+    const pos = v?.position ?? (r ? String(r.position) : '');
+    return `<form method="post" action="/support/replies${r ? `/${attr(r.id)}` : ''}" class="stack">
+        <div class="grid2">
+          <label>${esc(L('Name in English', 'İngilizce adı'))} <input name="title_en" required minlength="2" maxlength="60" value="${attr(val('title_en'))}"></label>
+          <label>${esc(L('Name in Turkish', 'Türkçe adı'))} <input name="title_tr" required minlength="2" maxlength="60" value="${attr(val('title_tr'))}"></label>
+        </div>
+        <div class="grid2">
+          <label>${esc(L('Offered for', 'Kimin için'))} <select name="audience">${(
+            ['all', 'agent', 'partner'] as const
+          )
+            .map(
+              (a) =>
+                `<option value="${a}"${val('audience') === a ? ' selected' : ''}>${esc(L(...AUDIENCE[a]))}</option>`,
+            )
+            .join('')}</select></label>
+          <label>${esc(L('Order', 'Sıra'))} <input name="position" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" value="${attr(pos)}">
+            <span class="hint">${esc(L('Smaller comes first.', 'Küçük olan önce gelir.'))}</span></label>
+        </div>
+        <label>${esc(L('Text, as it is sent', 'Gönderileceği haliyle metin'))} <textarea name="body" required minlength="10" maxlength="4000" rows="8">${esc(val('body'))}</textarea></label>
+        <div><button type="submit"${r ? ' class="secondary"' : ''}>${esc(r ? L('Save changes', 'Değişiklikleri kaydet') : L('Add the reply', 'Yanıtı ekle'))}</button></div>
+      </form>`;
+  };
+  const items = list
+    .map(
+      (
+        r,
+      ) => `<details class="disclosure reply"${values?.id === r.id ? ' open' : ''}><summary><span>${esc(L(r.title_en, r.title_tr))}</span> <span class="status">${esc(L(...AUDIENCE[r.audience]))}</span></summary>
+        <div>${values?.id === r.id && errorText ? error(errorText) : ''}${form(r)}
+          <details class="disclosure danger-zone"><summary>${esc(L('Delete this reply', 'Bu yanıtı sil'))}</summary><div>
+            <p class="hint">${esc(L('It disappears from every ticket at once. Messages already sent with it stay as they are.', 'Tüm mesajlardan hemen kalkar. Bununla gönderilmiş yanıtlar olduğu gibi kalır.'))}</p>
+            <form method="post" action="/support/replies/${attr(r.id)}/delete"><button class="danger" type="submit">${esc(L('Delete', 'Sil'))}</button></form>
+          </div></details>
+          <p class="hint">${esc(L('Last changed', 'Son değişiklik'))} ${r.updated_at ? moment(r.updated_at) : '—'}</p>
+        </div></details>`,
+    )
+    .join('');
+  return layout(
+    L('Saved replies', 'Kayıtlı yanıtlar'),
+    { ...nav, current: 'support' },
+    `${notice(noticeText)}
+     ${crumbs([`<a href="/support" translate="no">${esc(L('Support', 'Destek'))}</a>`, `<span translate="no">${esc(L('Saved replies', 'Kayıtlı yanıtlar'))}</span>`])}
+     <div translate="no">
+       <h1>${esc(L('Saved replies', 'Kayıtlı yanıtlar'))}</h1>
+       <p class="lede">${esc(L('Answers you give often. On a ticket, choosing one puts its text in the reply box; you change it before sending. Write them in Turkish, as the people who write to us read Turkish.', 'Sık verdiğiniz yanıtlar. Bir mesajda birini seçince metni yanıt kutusuna gelir; göndermeden önce değiştirirsiniz. Bize yazanlar Türkçe okuduğu için Türkçe yazın.'))}</p>
+       ${errorText && values?.id !== 'new' && !list.some((r) => r.id === values?.id) ? error(errorText) : ''}
+       <div class="reply-list">${items || `<p class="panel">${esc(L('No saved replies yet.', 'Henüz kayıtlı yanıt yok.'))}</p>`}</div>
+       <details class="disclosure"${values?.id === 'new' ? ' open' : ''}><summary>${esc(L('Add a saved reply', 'Kayıtlı yanıt ekle'))}</summary><div>
+         ${values?.id === 'new' && errorText ? error(errorText) : ''}${form(null)}</div></details>
+     </div>`,
+  );
+}
+
 export function supportThread(
   nav: Nav,
   t: TicketThread,
@@ -835,17 +924,22 @@ export function supportThread(
   noticeText: string | null,
   /** The key of a saved reply to put in the reply box. */
   replyKey = '',
+  replies: SavedReply[] = repliesOrBuiltIn(null),
 ): string {
   const open = t.ticket.status !== 'closed';
-  const offered = SAVED_REPLIES.filter((r) => !r.for || r.for === t.ticket.requester_kind);
-  const draft = offered.find((r) => r.key === replyKey)?.text ?? '';
+  const offered = replies.filter(
+    (r) => r.audience === 'all' || r.audience === t.ticket.requester_kind,
+  );
+  const draft = offered.find((r) => r.id === replyKey)?.body ?? '';
   const saved = `<p class="hint" style="margin-bottom:.4rem">${esc(L('Start from a saved reply, then make it fit:', 'Kayıtlı bir yanıtla başlayın, sonra duruma uyarlayın:'))}</p>
     <ul class="filters">${offered
       .map(
         (r) =>
-          `<li><a href="/support/${attr(t.ticket.id)}?reply=${attr(r.key)}#reply"${r.key === replyKey ? ' aria-current="true"' : ''}>${esc(L(...r.label))}</a></li>`,
+          `<li><a href="/support/${attr(t.ticket.id)}?reply=${attr(r.id)}#reply"${r.id === replyKey ? ' aria-current="true"' : ''}>${esc(L(r.title_en, r.title_tr))}</a></li>`,
       )
-      .join('')}</ul>`;
+      .join(
+        '',
+      )}<li><a href="/support/replies">${esc(L('Edit saved replies', 'Kayıtlı yanıtları düzenle'))}</a></li></ul>`;
   const messages = t.messages
     .map((m) => {
       const label =

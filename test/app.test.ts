@@ -1383,6 +1383,49 @@ describe('support inbox', () => {
     expect(company).not.toContain('alacaklı ödemesini yaptıktan sonra');
   });
 
+  it('lets staff add, change and delete saved replies', async () => {
+    const staff = await signIn('support-1!aal2');
+    const page = await (await request('/support/replies', { headers: { Cookie: staff } })).text();
+    expect(page).toContain('When a payment arrives');
+    const bad = await post('/support/replies', staff, {
+      title_en: 'x',
+      title_tr: 'y',
+      audience: 'all',
+      body: 'Merhaba, teşekkürler.',
+    });
+    expect(bad.status).toBe(422);
+    expect(await bad.text()).toContain('2 to 60 characters');
+    const added = await post('/support/replies', staff, {
+      title_en: 'Thanks',
+      title_tr: 'Teşekkürler',
+      audience: 'partner',
+      body: 'Merhaba, teşekkür ederiz.',
+      position: '5',
+    });
+    expect(added.headers.get('Location')).toBe('/support/replies?done=reply_saved');
+    const offered = await (
+      await request('/support/tk-2?reply=rp-4', { headers: { Cookie: staff } })
+    ).text();
+    expect(offered).toContain('?reply=rp-4#reply');
+    expect(offered).toContain('Merhaba, teşekkür ederiz.');
+    expect(offered).toContain('href="/support/replies"');
+    const agentSide = await (await request('/support/tk-1', { headers: { Cookie: staff } })).text();
+    expect(agentSide).not.toContain('?reply=rp-4');
+    const changed = await post('/support/replies/rp-4', staff, {
+      title_en: 'Thank you',
+      title_tr: 'Teşekkür',
+      audience: 'all',
+      body: 'Merhaba, çok teşekkürler.',
+    });
+    expect(changed.headers.get('Location')).toBe('/support/replies?done=reply_saved');
+    expect(await (await request('/support/tk-1', { headers: { Cookie: staff } })).text()).toContain(
+      '?reply=rp-4#reply',
+    );
+    const gone = await post('/support/replies/rp-4/delete', staff, {});
+    expect(gone.headers.get('Location')).toBe('/support/replies?done=reply_deleted');
+    expect((await post('/support/replies/rp-4/delete', staff, {})).status).toBe(404);
+  });
+
   it('lists tickets, answers, notes, assigns and closes', async () => {
     const staff = await signIn('support-1!aal2');
     const inbox = await (await request('/support', { headers: { Cookie: staff } })).text();

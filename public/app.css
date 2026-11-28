@@ -3595,3 +3595,49 @@ textarea {
   font-family: var(--body);
   line-height: 1.5;
 }
+
+/* Disclosures (2earl design system): detail closed until asked for. */
+details.disclosure {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+details.disclosure > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: var(--target);
+  padding: 0.6rem 1.1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+details.disclosure[open] > summary {
+  margin: 0;
+}
+
+details.disclosure > div {
+  padding: 0 1.1rem 1.1rem;
+}
+
+/* A select as tall as the inputs beside it. */
+select {
+  box-sizing: border-box;
+  height: var(--target);
+  min-height: 0;
+  padding-block: 0;
+}
+
+details.disclosure details.disclosure {
+  margin-top: 1rem;
+  background: var(--bg);
+}
+
+/* A label's field sits right under its text, even when the neighbour has a hint below it. */
+label {
+  align-content: start;
+}

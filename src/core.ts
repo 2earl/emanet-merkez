@@ -17,6 +17,17 @@ export const STAFF_ROLES: readonly StaffRole[] = ['owner', 'admin', 'support'];
  * default, and anyone the owner gives "Merkez admin" on login's /admin/team: change partners,
  * agents and settings, confirm deliveries, move money). Read live on every request.
  */
+export interface SavedReply {
+  id: string;
+  title_en: string;
+  title_tr: string;
+  audience: 'all' | 'agent' | 'partner';
+  body: string;
+  position: number;
+  updated_by: string;
+  updated_at: number;
+}
+
 export type Permission = 'emanet:control.review' | 'emanet:control.change';
 export interface Authorization {
   permissionsOf(query: {
@@ -994,6 +1005,19 @@ export interface ControlApi {
     note?: boolean,
   ): Promise<Result<null>>;
   supportAssign(staffId: string, ticketId: string, to: string | null): Promise<Result<null>>;
+  supportReplies(): Promise<Result<SavedReply[]>>;
+  saveSupportReply(
+    staffId: string,
+    input: {
+      id?: string;
+      title_en: string;
+      title_tr: string;
+      audience: string;
+      body: string;
+      position?: number;
+    },
+  ): Promise<Result<{ id: string }>>;
+  deleteSupportReply(staffId: string, replyId: string): Promise<Result<null>>;
   supportClose(staffId: string, ticketId: string, closed: boolean): Promise<Result<null>>;
   placeHold(
     staffId: string,

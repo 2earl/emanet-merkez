@@ -102,6 +102,9 @@ const ERROR_TEXT: Record<string, string> = {
   already_held: 'It is already held.',
   invalid_hold: 'Choose what to hold.',
   invalid_message: 'Write a message of 2 to 4000 characters.',
+  invalid_title: 'Give the reply a name of 2 to 60 characters, in both languages.',
+  invalid_audience: 'Choose who the reply is offered for.',
+  too_many_replies: 'There are 30 saved replies already. Delete one first.',
   duplicate_case: 'The partner already has an open case on that vehicle. Reject this one.',
   no_active_case: 'No active case on this vehicle any more.',
   no_payout_rule: 'Set the agents’ payout rule in Settings first.',
@@ -166,6 +169,8 @@ const DONE: Record<string, string> = {
   request_opened: 'Request recorded. It must be answered within 30 days.',
   request_closed: 'Request closed.',
   ticket_replied: 'Sent. They are emailed that an answer is waiting.',
+  reply_saved: 'Saved. It is offered on tickets from now on.',
+  reply_deleted: 'Deleted. Messages already sent with it are unchanged.',
   ticket_noted: 'Note saved. Only staff see it.',
   ticket_assigned: 'Saved.',
   ticket_closed: 'Closed.',
@@ -1530,11 +1535,77 @@ export function createApp(now: () => number) {
     );
   });
 
+  /** Core's saved replies; before core has them (or if it fails), the built-in set. */
+  const replies = async (c: AppContext) => {
+    try {
+      const result = await core(c.env).supportReplies();
+      return result.ok ? result.value : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const showReplies = async (
+    c: AppContext,
+    error: string | null,
+    values: { id: string; v: Record<string, string> } | null = null,
+    status: 200 | 404 | 422 = 200,
+  ) => c.html(asks.repliesPage(nav(c), (await replies(c)) ?? [], error, done(c), values), status);
+
+  app.get('/support/replies', (c) => showReplies(c, null));
+
+  const replyInput = (v: Record<string, string>) => ({
+    title_en: v.title_en ?? '',
+    title_tr: v.title_tr ?? '',
+    audience: v.audience ?? 'all',
+    body: v.body ?? '',
+    ...(v.position && /^\d{1,4}$/.test(v.position) ? { position: Number(v.position) } : {}),
+  });
+
+  app.post('/support/replies', async (c) => {
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
+    const v = await formValues(c);
+    const result = await core(c.env).saveSupportReply(uid(c), replyInput(v));
+    if (!result.ok) return showReplies(c, errorText(result.error), { id: 'new', v }, 422);
+    return c.redirect('/support/replies?done=reply_saved', 303);
+  });
+
+  app.post('/support/replies/:reply', async (c) => {
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
+    const v = await formValues(c);
+    const id = c.req.param('reply');
+    const result = await core(c.env).saveSupportReply(uid(c), { id, ...replyInput(v) });
+    if (!result.ok) {
+      return showReplies(
+        c,
+        errorText(result.error),
+        { id, v },
+        result.error === 'not_found' ? 404 : 422,
+      );
+    }
+    return c.redirect('/support/replies?done=reply_saved', 303);
+  });
+
+  app.post('/support/replies/:reply/delete', async (c) => {
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
+    const result = await core(c.env).deleteSupportReply(uid(c), c.req.param('reply'));
+    if (!result.ok) return showReplies(c, errorText(result.error), null, 404);
+    return c.redirect('/support/replies?done=reply_deleted', 303);
+  });
+
   const showTicket = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
     const found = await core(c.env).supportTicket(c.req.param('id') ?? '');
     if (!found.ok) return notFound(c);
     return c.html(
-      asks.supportThread(nav(c), found.value, uid(c), error, done(c), c.req.query('reply') ?? ''),
+      asks.supportThread(
+        nav(c),
+        found.value,
+        uid(c),
+        error,
+        done(c),
+        c.req.query('reply') ?? '',
+        asks.repliesOrBuiltIn(await replies(c)),
+      ),
       status,
     );
   };
