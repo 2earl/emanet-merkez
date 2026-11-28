@@ -95,6 +95,7 @@ function seed() {
   s = {
     calls: [],
     signoffsOpen: [],
+    activateBlocked: null,
     activation: { ready: false, items: [
       { key: 'application', ok: true, blocking: true },
       { key: 'documents', ok: false, blocking: true },
@@ -419,10 +420,14 @@ export class ControlApi extends WorkerEntrypoint {
     log('activationChecklist', [agentId]);
     return ok(s.activation ?? { items: [], ready: false });
   }
-  async recordVideoCall(staffId, agentId, passed) {
+  async recordVideoCall(staffId, agentId, passed, activate) {
     log('recordVideoCall', [staffId, agentId, passed]);
     s.videoCalls = { ...(s.videoCalls ?? {}), [agentId]: passed ? 'passed' : 'failed' };
-    return ok(null);
+    if (passed && activate) {
+      if (s.activateBlocked) return ok({ activated: false, blocked: s.activateBlocked });
+      return ok({ activated: true, blocked: null });
+    }
+    return ok({ activated: false, blocked: null });
   }
   async privacySearch(staffId, term) {
     log('privacySearch', [staffId, term]);
@@ -698,6 +703,7 @@ export class ControlApi extends WorkerEntrypoint {
   async testReset() { seed(); }
   async testActivation(value) { s.activation = value; }
   async testSignoffsOpen(list) { s.signoffsOpen = list; }
+  async testActivateBlocked(code) { s.activateBlocked = code; }
 }
 export default { fetch() { return new Response(null, { status: 404 }); } };
 `;

@@ -159,7 +159,9 @@ const DONE: Record<string, string> = {
   redacted: 'The addresses are erased.',
   request_opened: 'Request recorded. It must be answered within 30 days.',
   request_closed: 'Request closed.',
-  call_recorded: 'Video call recorded.',
+  call_recorded:
+    'Video call recorded. The agent is not active yet: use “Before you activate” below.',
+  call_activated: 'Video call recorded and the agent is active. The agent is emailed.',
   saved: 'Saved.',
   reset: 'Back to the default.',
   document_decided: 'Result recorded. The file is being deleted.',
@@ -1089,8 +1091,19 @@ export function createApp(now: () => number) {
       uid(c),
       c.req.param('id'),
       v.result !== 'failed',
+      v.activate === '1',
     );
     if (!result.ok) return showAgent(c, errorText(result.error), 422);
+    if (result.value.activated) {
+      return c.redirect(`/agents/${c.req.param('id')}?done=call_activated`, 303);
+    }
+    if (result.value.blocked) {
+      // The call is saved; say plainly why the agent is still waiting.
+      return showAgent(
+        c,
+        `Video call recorded, but the agent was not activated. ${errorText(result.value.blocked)}`,
+      );
+    }
     return c.redirect(`/agents/${c.req.param('id')}?done=call_recorded`, 303);
   });
 

@@ -795,6 +795,14 @@ export const tr: Catalog = {
     'This case is still open. Its partner changes or withdraws it; closed cases can be erased here.':
       'Bu dosya hâlâ açık. Kurum değiştirir veya geri çeker; kapalı dosyalar buradan silinebilir.',
     'Video call recorded.': 'Görüntülü görüşme kaydedildi.',
+    'Video call recorded. The agent is not active yet: use “Before you activate” below.':
+      'Görüntülü görüşme kaydedildi. Görevli henüz etkin değil: aşağıdaki “Etkinleştirmeden önce” bölümünü kullanın.',
+    'Video call recorded and the agent is active. The agent is emailed.':
+      'Görüntülü görüşme kaydedildi ve görevli etkin. Görevliye e-posta gönderilir.',
+    'Video call recorded, but the agent was not activated.':
+      'Görüntülü görüşme kaydedildi ama görevli etkinleştirilmedi.',
+    'If the call passed, make the agent active now (the same checks as “Before you activate” still apply).':
+      'Görüşme geçtiyse görevliyi şimdi etkinleştir (“Etkinleştirmeden önce” kontrolleri yine geçerli).',
     'Video call with the ID card': 'Kimlik kartıyla görüntülü görüşme',
     'ID card chip (NFC)': 'Kimlik kartı çipi (NFC)',
     'Liveness check': 'Canlılık kontrolü',

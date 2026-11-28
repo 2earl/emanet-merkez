@@ -829,7 +829,12 @@ export interface ControlApi {
   kycChecks(agentId: string): Promise<Result<KycCheck[]>>;
   activationChecklist(agentId: string): Promise<Result<ActivationChecklist>>;
   approvalChecklist(staffId: string, onboardingId: string): Promise<Result<ApprovalChecklist>>;
-  recordVideoCall(staffId: string, agentId: string, passed: boolean): Promise<Result<null>>;
+  recordVideoCall(
+    staffId: string,
+    agentId: string,
+    passed: boolean,
+    activate?: boolean,
+  ): Promise<Result<{ activated: boolean; blocked: string | null }>>;
   privacySearch(staffId: string, term: string): Promise<Result<Inventory>>;
   eraseEvidence(staffId: string, evidenceId: string, reason: string): Promise<Result<null>>;
   eraseDocument(staffId: string, documentId: string, reason: string): Promise<Result<null>>;

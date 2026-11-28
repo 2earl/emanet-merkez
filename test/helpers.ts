@@ -79,6 +79,7 @@ interface CoreTestHooks {
   testReset(): Promise<void>;
   testActivation(value: unknown): Promise<void>;
   testSignoffsOpen(list: string[]): Promise<void>;
+  testActivateBlocked(code: string | null): Promise<void>;
   testArchiveDue(
     files: { file_ref: string; bucket: 'evidence' | 'documents'; archive_id: string }[],
   ): Promise<void>;
