@@ -686,6 +686,50 @@ describe('before activating an agent', () => {
   });
 });
 
+describe('development mode', () => {
+  it('is switched on by an owner with a fresh second factor, shows a banner, and ends when switched off', async () => {
+    const admin = await signIn('admin-1!aal2');
+    expect((await post('/settings/dev-mode', admin, { on: '1' })).status).toBe(403);
+    const stale = await signIn('owner-1!old');
+    expect(
+      (await post('/settings/dev-mode', stale, { on: '1' })).headers.get('Location'),
+    ).toContain('/signin?second_factor=1');
+
+    const owner = await signIn('owner-1!aal2');
+    const before = await (await request('/settings', { headers: { Cookie: owner } })).text();
+    expect(before).not.toContain('Development mode is on.');
+    expect(before).toContain('Switch on for twelve hours');
+    // The core's extra setting isn't a row of the generic form.
+    expect(before).not.toContain('name="dev_mode"');
+
+    const on = await post('/settings/dev-mode', owner, { on: '1' });
+    expect(on.headers.get('Location')).toBe('/settings?done=saved#g-dev');
+    expect(await callsOf('setDevMode')).toEqual([['owner-1', true]]);
+    const page = await (await request('/', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('Development mode is on.');
+    expect(page).toContain('Use test data only.');
+
+    await post('/settings/dev-mode', owner, { on: '0' });
+    expect(await callsOf('setDevMode')).toEqual([
+      ['owner-1', true],
+      ['owner-1', false],
+    ]);
+    const after = await (await request('/', { headers: { Cookie: admin } })).text();
+    expect(after).not.toContain('Development mode is on.');
+  });
+
+  it('turns Turkish with the page', async () => {
+    const owner = await signIn('owner-1!aal2');
+    await post('/settings/dev-mode', owner, { on: '1' });
+    const page = await (
+      await request('/settings', { headers: { Cookie: owner, 'Accept-Language': 'tr' } })
+    ).text();
+    expect(page).toContain('Geliştirme modu açık.');
+    expect(page).toContain('Kapat');
+    await post('/settings/dev-mode', owner, { on: '0' });
+  });
+});
+
 describe('privacy', () => {
   it('finds what is held and deletes it with a reason and a fresh second factor', async () => {
     const admin = await signIn('admin-1!aal2');

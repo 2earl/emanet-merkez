@@ -931,6 +931,11 @@ export interface ControlApi {
   closeMonth(staffId: string, month: string): Promise<Result<null>>;
   /** Every setting with its value, default, range, unit, group and last change. */
   settingsInfo(): Promise<Result<SettingInfo[]>>;
+  devMode(): Promise<Result<{ active: boolean; until: number | null }>>;
+  setDevMode(
+    staffId: string,
+    on: boolean,
+  ): Promise<Result<{ active: boolean; until: number | null }>>;
   resetSetting(staffId: string, key: keyof Settings): Promise<Result<null>>;
   /** Sends a waiting application back to the applicant with what to correct. */
   returnApplication(staffId: string, agentId: string, reason: string): Promise<Result<null>>;

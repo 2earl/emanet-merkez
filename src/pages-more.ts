@@ -94,6 +94,7 @@ export function settingsPage(
   errorText: string | null,
   provider: ProviderRecord | null,
   providerValues: Partial<Record<keyof Provider, string>> | null,
+  dev: { until: number | null; act: boolean } | null = null,
 ): string {
   const act = canChange && fresh;
   const l = locale();
@@ -186,12 +187,23 @@ export function settingsPage(
          : ''
      }</section>`;
 
+  const devSection = dev
+    ? `<section id="g-dev" class="setting-group" translate="no"><h2>${icon('alert')}<span>${esc(L('Development mode', 'Geliştirme modu'))}</span></h2>
+       <p class="hint">${esc(L('For testing before there is a test environment. While it is on: the sign-off and e-Devlet document checks are lifted, and whoever invited a company may approve it. IBAN checks and the second approver on large payouts stay. It switches itself off after twelve hours, and every switch is in the audit log. What you create meanwhile is real data: use test data only.', 'Test ortamı olana kadar deneme için. Açıkken: onay ve e-Devlet belge kontrolleri kalkar, bir şirketi davet eden kişi onu onaylayabilir. IBAN kontrolü ve büyük ödemelerde ikinci onaylayan kalır. On iki saat sonra kendiliğinden kapanır, her değişiklik denetim kaydındadır. Bu sürede oluşturduklarınız gerçek veridir: yalnızca deneme verisi kullanın.'))}</p>
+       <p>${dev.until ? `<strong>${esc(L('On.', 'Açık.'))}</strong> ${esc(L('Ends at', 'Bitiş:'))} ${esc(new Intl.DateTimeFormat(l === 'tr' ? 'tr-TR' : 'en-GB', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Istanbul' }).format(new Date(dev.until * 1000)))}` : `<strong>${esc(L('Off.', 'Kapalı.'))}</strong>`}</p>
+       ${
+         dev.act
+           ? `<form method="post" action="/settings/dev-mode"><input type="hidden" name="on" value="${dev.until ? '0' : '1'}"><button class="${dev.until ? '' : 'secondary'}" type="submit">${esc(dev.until ? L('Switch off', 'Kapat') : L('Switch on for twelve hours', 'On iki saatliğine aç'))}</button></form>`
+           : confirmFirst('/settings')
+       }</section>`
+    : '';
   const changedCount = settings.filter((s) => s.value !== s.default).length;
   const toc = `<nav class="toc" aria-labelledby="toc-title" translate="no">
       <strong id="toc-title">${esc(L('On this page', 'Bu sayfada'))}</strong>
       <a href="#g-company">${esc(L('Company details', 'Şirket bilgileri'))}</a>
       ${SETTING_GROUPS.map((g) => `<a href="#g-${g}">${esc(GROUP_TEXT[g][l].label)}</a>`).join('')}
       <a href="#g-pay">${esc(L('Agents’ pay', 'Görevli ödemesi'))}</a>
+      ${dev ? `<a href="#g-dev">${esc(L('Development mode', 'Geliştirme modu'))}</a>` : ''}
       <a class="toc-more" href="/guide/settings">${icon('guide')}<span>${esc(L('Configuration reference', 'Yapılandırma başvurusu'))}</span></a>
     </nav>`;
 
@@ -206,6 +218,7 @@ export function settingsPage(
      <div class="with-toc">${toc}<div class="toc-body">
        ${providerSection}
        ${groups}
+       ${devSection}
        ${paySection}
      </div></div>
      ${resets}`,

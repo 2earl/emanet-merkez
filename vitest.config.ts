@@ -232,10 +232,10 @@ export class ControlApi extends WorkerEntrypoint {
   }
   async settings() { return ok({ ...s.settings }); }
   async settingsInfo() {
-    return ok(Object.entries(SPECS).map(([key, [group, unit, def, min, max]]) => ({
+    return ok([...Object.entries(SPECS).map(([key, [group, unit, def, min, max]]) => ({
       key, group, unit, default: def, min, max, value: s.settings[key],
       updated_by: s.settingsChanged[key] ?? null, updated_at: s.settingsChanged[key] ? now() : null,
-    })));
+    })), { key: 'dev_mode', group: 'operations', unit: 'switch', default: 0, min: 0, max: 1, value: 0, updated_by: null, updated_at: null }]);
   }
   async setSetting(staffId, key, value) {
     log('setSetting', [staffId, key, value]);
@@ -405,6 +405,14 @@ export class ControlApi extends WorkerEntrypoint {
   async kycChecks(agentId) {
     return ok(s.videoCalls?.[agentId] ? [{ kind: 'video_call', provider: 'staff', result: s.videoCalls[agentId], reviewed_by: 'admin-1', created_at: now() }]
       : [{ kind: 'id_registry', provider: 'nvi-kps', result: 'review', reviewed_by: null, created_at: now() - 60 }]);
+  }
+  async devMode() {
+    return ok({ active: s.dev != null, until: s.dev ?? null });
+  }
+  async setDevMode(staffId, on) {
+    log('setDevMode', [staffId, on]);
+    s.dev = on ? now() + 43200 : null;
+    return ok({ active: on, until: s.dev });
   }
   async activationChecklist(agentId) {
     log('activationChecklist', [agentId]);
