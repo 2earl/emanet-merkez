@@ -3558,3 +3558,40 @@ ul.cards .card p {
     display: none;
   }
 }
+
+/* Choices as pills (2earl design system: Filters). The chosen one is filled in ink, not vermilion. */
+ul.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+ul.filters a {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+
+ul.filters a:hover {
+  border-color: var(--field);
+}
+
+ul.filters a[aria-current] {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+}
+
+/* A reply is prose, not code. */
+textarea {
+  font-family: var(--body);
+  line-height: 1.5;
+}

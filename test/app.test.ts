@@ -1365,6 +1365,24 @@ describe('what is deleted when', () => {
 });
 
 describe('support inbox', () => {
+  it('offers saved replies that fit who is asking and fills the reply box', async () => {
+    const staff = await signIn('support-1!aal2');
+    const agentTicket = await (
+      await request('/support/tk-1', { headers: { Cookie: staff } })
+    ).text();
+    expect(agentTicket).toContain('?reply=payment-when#reply');
+    expect(agentTicket).not.toContain('?reply=e-invoice');
+    const filled = await (
+      await request('/support/tk-1?reply=payment-when', { headers: { Cookie: staff } })
+    ).text();
+    expect(filled).toContain('alacaklı ödemesini yaptıktan sonra');
+    const company = await (
+      await request('/support/tk-2?reply=payment-when', { headers: { Cookie: staff } })
+    ).text();
+    expect(company).toContain('?reply=e-invoice#reply');
+    expect(company).not.toContain('alacaklı ödemesini yaptıktan sonra');
+  });
+
   it('lists tickets, answers, notes, assigns and closes', async () => {
     const staff = await signIn('support-1!aal2');
     const inbox = await (await request('/support', { headers: { Cookie: staff } })).text();
