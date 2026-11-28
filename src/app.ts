@@ -354,7 +354,11 @@ export function createApp(now: () => number) {
     }
     const [role, granted] = await Promise.all([
       staff(c.env).roleOf(session.uid),
-      authz(c.env).permissionsOf({ subject: { type: 'user', id: session.uid } }),
+      authz(c.env).permissionsOf({
+        subject: { type: 'user', id: session.uid },
+        // For app roles the owner limited to a recent second factor or to networks.
+        context: { aal2At: session.aal2At, ip: c.req.header('CF-Connecting-IP') ?? null },
+      }),
     ]);
     if (!role || !granted.permissions.includes('emanet:control.review')) {
       return c.html(
