@@ -2406,3 +2406,337 @@ dl.glossary dd {
     transition: none;
   }
 }
+
+/* ---- A record's page: the work on the left, the decision beside it -------------------------------- */
+
+.workspace {
+  display: grid;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (min-width: 78rem) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+  }
+
+  .workspace-side {
+    position: sticky;
+    top: 1.5rem;
+  }
+}
+
+.panel.decision {
+  border-top: 4px solid var(--action);
+}
+
+.panel.decision h2 {
+  margin-top: 0;
+}
+
+.panel.decision .grid2 {
+  grid-template-columns: 1fr;
+}
+
+/* ---- Search in the rail --------------------------------------------------------------------------- */
+
+.rail-search {
+  display: none;
+}
+
+@media (min-width: 64rem) {
+  .rail-search {
+    display: block;
+    margin: 0;
+  }
+
+  .rail-search label {
+    position: relative;
+    display: block;
+    margin: 0;
+  }
+
+  .rail-search .icon {
+    position: absolute;
+    left: 0.7rem;
+    top: 50%;
+    width: 1.05rem;
+    height: 1.05rem;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .rail-search input {
+    width: 100%;
+    padding-left: 2.2rem;
+    min-height: 2.4rem;
+    background: var(--sunken);
+  }
+}
+
+ul.results {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+ul.results li + li {
+  border-top: 1px solid var(--rule);
+}
+
+ul.results a {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  padding: 0.8rem 1rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+ul.results a:hover {
+  background: var(--sunken);
+}
+
+ul.results span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+/* ---- A banner that leads somewhere ---------------------------------------------------------------- */
+
+a.banner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+  padding: 0.9rem 1.1rem;
+  background: color-mix(in srgb, var(--wait) 10%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--wait) 45%, var(--rule));
+  border-left: 4px solid var(--wait);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.banner > .icon:first-child {
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--wait);
+}
+
+/* ---- Vetting: agreement and documents ------------------------------------------------------------- */
+
+.vetting {
+  margin: 1.5rem 0;
+}
+
+.fact-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.fact-line > .icon {
+  color: var(--good);
+  margin-top: 0.15rem;
+}
+
+ul.docs-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+ul.docs-list > li {
+  padding: 1rem 1.15rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.doc-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.doc-work {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--rule);
+}
+
+.doc-work .barcode {
+  margin-left: 0.8rem;
+  color: var(--muted);
+}
+
+/* ---- Readiness ------------------------------------------------------------------------------------ */
+
+.verdicts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem 1.2rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--wait);
+  border-radius: var(--radius);
+}
+
+.verdict.ok {
+  border-left-color: var(--good);
+}
+
+.verdict .icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--wait);
+}
+
+.verdict.ok .icon {
+  color: var(--good);
+}
+
+ul.checks-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.check-row:last-child {
+  border-bottom: 0;
+}
+
+.check-mark {
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--wait) 14%, var(--paper));
+  color: var(--wait);
+}
+
+.check-row.ok .check-mark {
+  background: color-mix(in srgb, var(--good) 14%, var(--paper));
+  color: var(--good);
+}
+
+.check-row h3 {
+  margin: 0 0 0.2rem;
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.check-row p {
+  margin: 0.2rem 0;
+  color: var(--muted);
+}
+
+.who-signs {
+  margin-left: 0.6rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.signoff-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.7rem 1rem;
+  align-items: end;
+  margin-top: 0.8rem;
+}
+
+/* ---- The accountant's files ----------------------------------------------------------------------- */
+
+.files {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 2rem;
+}
+
+.file-link {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.9rem 1.1rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.file-link:hover {
+  border-color: var(--action);
+}
+
+.file-link .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--action);
+}
+
+.file-link span {
+  display: grid;
+}
+
+.file-link small {
+  color: var(--muted);
+}
+
+.counts strong span {
+  font-size: inherit;
+  color: inherit;
+}
+
+.tabs a .icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--good);
+}

@@ -116,6 +116,7 @@ export interface AgentRow {
   birth_year?: number | null;
   /** What staff asked the applicant to correct, while the application is back with them. */
   review_note?: string | null;
+  address?: string | null;
 }
 
 export interface PayoutRow {
@@ -358,6 +359,110 @@ export interface SettingInfo {
   group: SettingGroup;
   updated_by: string | null;
   updated_at: number | null;
+}
+
+export interface AgentDocument {
+  id: string;
+  kind: 'criminal_record' | 'population_record';
+  barcode: string;
+  uploaded_at: number;
+  status: 'uploaded' | 'verified' | 'rejected';
+  outcome: string | null;
+  decided_at: number | null;
+  note: string | null;
+  file_ref: string | null;
+}
+export interface Acceptance {
+  version: string;
+  sha256: string;
+  locale: string;
+  accepted_at: number;
+  current: boolean;
+}
+export interface ReadinessCheck {
+  key: string;
+  kind: 'auto' | 'signoff';
+  ok: boolean;
+  version?: string;
+  by?: 'lawyer' | 'accountant';
+  signer?: string | null;
+  signed_at?: number | null;
+  signed_version?: string | null;
+  note?: string | null;
+}
+export interface Readiness {
+  checks: ReadinessCheck[];
+  partners_ready: boolean;
+  agents_ready: boolean;
+  enforced: boolean;
+}
+export interface AccountingMonth {
+  month: string;
+  closed: { by: string; at: number } | null;
+  invoices: {
+    id: string;
+    number: string | null;
+    issued_at: number;
+    partner: string;
+    vkn: string | null;
+    tax_office: string | null;
+    net_kurus: number;
+    kdv_kurus: number;
+    total_kurus: number;
+    status: string;
+    cases: number;
+  }[];
+  receipts: {
+    id: string;
+    value_date: string;
+    partner: string;
+    amount_kurus: number;
+    bank_ref: string;
+    invoice_number: string | null;
+  }[];
+  payouts: {
+    id: string;
+    paid_at: number;
+    agent_id: string;
+    name: string | null;
+    tckn: string | null;
+    address: string | null;
+    tax_profile: string;
+    vkn: string | null;
+    iban: string | null;
+    gross_kurus: number;
+    withholding_kurus: number;
+    net_kurus: number;
+    bank_ref: string | null;
+  }[];
+  journal: {
+    entry_id: string;
+    occurred_at: number;
+    kind: string;
+    memo: string;
+    ref_id: string | null;
+    account_code: string;
+    account_name: string;
+    debit_kurus: number;
+    credit_kurus: number;
+  }[];
+  totals: {
+    invoiced_net: number;
+    invoiced_kdv: number;
+    received: number;
+    paid_gross: number;
+    withheld: number;
+    paid_net: number;
+    debit: number;
+    credit: number;
+  };
+  withholding: {
+    tax_profile: string;
+    payouts: number;
+    gross_kurus: number;
+    withheld_kurus: number;
+  }[];
+  incomplete: { agent_id: string; name: string | null; missing: string[] }[];
 }
 
 export type QueueKey = 'delivery' | 'identity' | 'agents' | 'onboarding' | 'privacy' | 'invoicing';
@@ -646,6 +751,27 @@ export interface ControlApi {
   ops(): Promise<Result<OpsOverview>>;
   /** The work waiting for staff, each queue against its service level. */
   queues(): Promise<Result<Queue[]>>;
+  agentDocuments(agentId: string): Promise<Result<AgentDocument[]>>;
+  agentAcceptance(agentId: string): Promise<Result<Acceptance | null>>;
+  documentFile(
+    staffId: string,
+    documentId: string,
+  ): Promise<Result<{ file_ref: string; agent_id: string; kind: string }>>;
+  decideDocument(
+    staffId: string,
+    documentId: string,
+    input: { outcome: string; note?: string },
+  ): Promise<Result<{ agent_id: string }>>;
+  readiness(): Promise<Result<Readiness>>;
+  signOff(
+    staffId: string,
+    key: string,
+    input: { signer: string; note?: string },
+  ): Promise<Result<null>>;
+  withdrawSignoff(staffId: string, key: string): Promise<Result<null>>;
+  accountingMonths(): Promise<Result<{ month: string; entries: number; closed: boolean }[]>>;
+  accountingMonth(staffId: string, month: string): Promise<Result<AccountingMonth>>;
+  closeMonth(staffId: string, month: string): Promise<Result<null>>;
   /** Every setting with its value, default, range, unit, group and last change. */
   settingsInfo(): Promise<Result<SettingInfo[]>>;
   resetSetting(staffId: string, key: keyof Settings): Promise<Result<null>>;

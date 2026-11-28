@@ -46,6 +46,7 @@ import {
 import { registerOnboarding } from './onboarding';
 import * as pages from './pages';
 import * as more from './pages-more';
+import * as ops from './pages-ops';
 import { SETTING_KEYS, SETTING_TEXT, type SettingKey } from './settings-text';
 
 /** Emanet Merkez: the 2earl staff console (emanet-core docs/DESIGN.md §7). */
@@ -73,6 +74,12 @@ const ERROR_TEXT: Record<string, string> = {
   enum_values_without_enum: 'Allowed values are only for “one of a list”.',
   invalid_setting: 'That value isn’t allowed.',
   checklist_incomplete: 'Tick every point of the checklist before confirming.',
+  documents_not_verified: 'Both e-Devlet documents must be verified as clear first.',
+  not_ready: 'Not yet: the sign-offs on the Readiness page are missing.',
+  invalid_signer: 'Enter who confirmed it.',
+  invalid_outcome: 'Choose what e-Devlet showed.',
+  already_decided: 'This document was decided already.',
+  month_not_over: 'That month isn’t over yet.',
   invalid_payout_rule: 'The payout rule isn’t valid.',
   case_not_pending: 'This case isn’t waiting for a review any more.',
   invalid_vin: 'The chassis number must be 17 letters and digits, without I, O or Q.',
@@ -143,6 +150,10 @@ const DONE: Record<string, string> = {
   call_recorded: 'Video call recorded.',
   saved: 'Saved.',
   reset: 'Back to the default.',
+  document_decided: 'Result recorded. The file is being deleted.',
+  signed: 'Sign-off recorded.',
+  unsigned: 'Sign-off withdrawn.',
+  month_closed: 'Marked as handed to the accountant.',
   agent_returned: 'Sent back. The applicant is told what to correct.',
   activated: 'Activated. Its people can use Emanet Kurumsal now.',
   suspended: 'Suspended.',
@@ -172,6 +183,8 @@ const SECTIONS = [
   '/privacy',
   '/system',
   '/guide',
+  '/readiness',
+  '/search',
 ];
 
 export function createApp(now: () => number) {
@@ -348,6 +361,7 @@ export function createApp(now: () => number) {
       core(c.env).onboardings('signed'),
       core(c.env).queues(),
     ]);
+    const readiness = await core(c.env).readiness();
     const reviews = { delivery: 0, missing_vin: 0, plate_conflict: 0 };
     for (const item of unwrap(queue)) reviews[item.kind]++;
     return c.html(
@@ -363,8 +377,116 @@ export function createApp(now: () => number) {
         },
         c.get('now'),
         queues.ok ? queues.value : [],
+        readiness.ok
+          ? !readiness.value.enforced ||
+              (readiness.value.partners_ready && readiness.value.agents_ready)
+          : null,
       ),
     );
+  });
+
+  // ---- Search, readiness ----------------------------------------------------------------------
+
+  app.get('/search', async (c) => {
+    const q = (c.req.query('q') ?? '').trim().slice(0, 80);
+    const needle = q.toLocaleLowerCase('tr-TR');
+    if (needle.length < 2) return c.html(ops.searchPage(nav(c), q, [], []));
+    const [agents, partners] = await Promise.all([
+      core(c.env).agents(null),
+      core(c.env).partners(),
+    ]);
+    const has = (...values: (string | null | undefined)[]) =>
+      values.some((value) => (value ?? '').toLocaleLowerCase('tr-TR').includes(needle));
+    return c.html(
+      ops.searchPage(
+        nav(c),
+        q,
+        unwrap(agents)
+          .filter((a) => has(a.legal_name, a.phone, a.email, a.city))
+          .slice(0, 25),
+        unwrap(partners)
+          .filter((p) => has(p.legal_name, p.vkn))
+          .slice(0, 25),
+      ),
+    );
+  });
+
+  const showReadiness = async (c: AppContext, error: string | null, status: 200 | 422 = 200) =>
+    c.html(
+      ops.readinessPage(
+        nav(c),
+        unwrap(await core(c.env).readiness()),
+        can.change(role(c)),
+        fresh(c),
+        done(c),
+        error,
+      ),
+      status,
+    );
+
+  app.get('/readiness', (c) => showReadiness(c, null));
+
+  app.post('/readiness/:key', async (c) => {
+    const denied = sensitive(c, '/readiness');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).signOff(uid(c), c.req.param('key'), {
+      signer: v.signer ?? '',
+      ...(v.note ? { note: v.note } : {}),
+    });
+    if (!result.ok) return showReadiness(c, errorText(result.error), 422);
+    return c.redirect('/readiness?done=signed', 303);
+  });
+
+  app.post('/readiness/:key/withdraw', async (c) => {
+    const denied = sensitive(c, '/readiness');
+    if (denied) return denied;
+    const result = await core(c.env).withdrawSignoff(uid(c), c.req.param('key'));
+    if (!result.ok) return showReadiness(c, errorText(result.error), 422);
+    return c.redirect('/readiness?done=unsigned', 303);
+  });
+
+  // ---- The accountant's month -------------------------------------------------------------------
+
+  app.get('/money/accounting', async (c) => {
+    if (!can.change(role(c))) return forbidden(c);
+    const months = unwrap(await core(c.env).accountingMonths());
+    const month = c.req.query('month') ?? months[0]?.month ?? null;
+    const data = month ? await core(c.env).accountingMonth(uid(c), month) : null;
+    return c.html(
+      ops.accountingPage(
+        nav(c),
+        months,
+        data?.ok ? data.value : null,
+        can.change(role(c)),
+        done(c),
+      ),
+    );
+  });
+
+  app.get('/money/accounting/:month/:file', async (c) => {
+    if (!can.change(role(c))) return forbidden(c);
+    const name = c.req.param('file').replace(/\.csv$/, '');
+    const data = await core(c.env).accountingMonth(uid(c), c.req.param('month'));
+    const csv = data.ok ? ops.accountingCsv(data.value, name) : null;
+    if (csv === null) return notFound(c);
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="emanet-${c.req.param('month')}-${name}.csv"`,
+        'Cache-Control': 'private, no-store',
+      },
+    });
+  });
+
+  app.post('/money/accounting/:month/close', async (c) => {
+    const denied = sensitive(c, `/money/accounting?month=${c.req.param('month')}`);
+    if (denied) return denied;
+    const result = await core(c.env).closeMonth(uid(c), c.req.param('month'));
+    if (!result.ok) {
+      return c.html(pages.problem(nav(c), 'Accounting', errorText(result.error)), 422);
+    }
+    return c.redirect(`/money/accounting?month=${c.req.param('month')}&done=month_closed`, 303);
   });
 
   // ---- Handbook --------------------------------------------------------------------------------
@@ -720,7 +842,11 @@ export function createApp(now: () => number) {
       (a) => a.user_id === c.req.param('id'),
     );
     if (!agent) return notFound(c);
-    const checks = await core(c.env).kycChecks(agent.user_id);
+    const [checks, documents, accepted] = await Promise.all([
+      core(c.env).kycChecks(agent.user_id),
+      core(c.env).agentDocuments(agent.user_id),
+      core(c.env).agentAcceptance(agent.user_id),
+    ]);
     return c.html(
       pages.agentDetail(
         nav(c),
@@ -730,10 +856,49 @@ export function createApp(now: () => number) {
         fresh(c),
         done(c),
         error,
+        ops.vettingPanel(
+          agent,
+          documents.ok ? documents.value : [],
+          accepted.ok ? accepted.value : null,
+          can.change(role(c)) && fresh(c),
+        ),
       ),
       status,
     );
   };
+
+  /** An applicant's e-Devlet document, to check against e-Devlet. Each opening is recorded. */
+  app.get('/agents/:id/documents/:doc', async (c) => {
+    const file = await core(c.env).documentFile(uid(c), c.req.param('doc'));
+    if (!file.ok || file.value.agent_id !== c.req.param('id')) return notFound(c);
+    const object = await c.env.EVIDENCE.get(file.value.file_ref);
+    if (!object) return notFound(c);
+    const type = object.httpMetadata?.contentType ?? '';
+    const shown = /^(application\/pdf|image\/(jpeg|png|webp))$/.test(type);
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': shown ? type : 'application/octet-stream',
+        'Content-Disposition': shown ? 'inline' : 'attachment; filename="document"',
+        'Cache-Control': 'private, no-store',
+        // An uploaded PDF runs nothing: the page's policy, plus `sandbox` (added by the middleware).
+        'Content-Security-Policy': 'sandbox',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+      },
+    });
+  });
+
+  app.post('/agents/:id/documents/:doc/decide', async (c) => {
+    const denied = sensitive(c, `/agents/${c.req.param('id')}`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).decideDocument(uid(c), c.req.param('doc'), {
+      outcome: v.outcome ?? '',
+      ...(v.note ? { note: v.note } : {}),
+    });
+    if (!result.ok) return showAgent(c, errorText(result.error), 422);
+    return c.redirect(`/agents/${c.req.param('id')}?done=document_decided`, 303);
+  });
 
   app.get('/agents/:id', (c) => showAgent(c, null));
 

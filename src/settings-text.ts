@@ -17,6 +17,7 @@ export const SETTING_KEYS = [
   'strike_limit',
   'email_code_minutes',
   'agent_mail',
+  'require_documents',
   'invitation_days',
   'onboarding_sla_hours',
   'expiry_warning_days',
@@ -35,6 +36,7 @@ export const SETTING_KEYS = [
   'privacy_request_days',
   'alert_interval_minutes',
   'ops_keep_days',
+  'require_signoffs',
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -67,6 +69,7 @@ export const SETTING_UNITS: Record<SettingKey, SettingUnit> = {
   strike_limit: 'count',
   email_code_minutes: 'minutes',
   agent_mail: 'switch',
+  require_documents: 'switch',
   invitation_days: 'days',
   onboarding_sla_hours: 'hours',
   expiry_warning_days: 'days',
@@ -85,6 +88,7 @@ export const SETTING_UNITS: Record<SettingKey, SettingUnit> = {
   privacy_request_days: 'days',
   alert_interval_minutes: 'minutes',
   ops_keep_days: 'days',
+  require_signoffs: 'switch',
 };
 
 interface Words {
@@ -287,6 +291,16 @@ export const SETTING_TEXT: Record<SettingKey, Both<Words>> = {
       help: 'Açık: başvuru alındığında, onaylandığında veya geri gönderildiğinde, teslim onaylandığında veya reddedildiğinde, ödeme gönderildiğinde ve hesap askıya alındığında veya yeniden açıldığında görevliye e-posta gider.',
     },
   },
+  require_documents: {
+    en: {
+      label: 'e-Devlet documents for applicants',
+      help: 'On: an application can be sent only with a criminal record and a population register extract uploaded, and an agent becomes active only after staff have verified both at e-Devlet as clear.',
+    },
+    tr: {
+      label: 'Başvuranlardan e-Devlet belgeleri',
+      help: 'Açık: başvuru ancak adli sicil kaydı ve nüfus kayıt örneği yüklenmişse gönderilebilir; görevli ancak ekip iki belgeyi de e-Devlet’te doğrulayıp temiz bulduktan sonra etkinleşir.',
+    },
+  },
   invitation_days: {
     en: {
       label: 'An invitation works for',
@@ -455,6 +469,16 @@ export const SETTING_TEXT: Record<SettingKey, Both<Words>> = {
     tr: {
       label: 'Uyarı e-postaları arasındaki en kısa süre',
       help: 'Hatalar ve geciken kuyruklar toplanır ve ekibe bundan daha sık gönderilmez.',
+    },
+  },
+  require_signoffs: {
+    en: {
+      label: 'Sign-offs before admitting anyone',
+      help: 'On: a company can’t be approved and an agent can’t be activated until the lawyer’s and the accountant’s sign-offs are recorded on the Readiness page for the texts in force. Switch off only for a test environment.',
+    },
+    tr: {
+      label: 'Kabulden önce onaylar',
+      help: 'Açık: yürürlükteki metinler için avukatın ve mali müşavirin onayları Hazırlık sayfasına işlenmeden kurum onaylanamaz, görevli etkinleştirilemez. Yalnızca deneme ortamında kapatın.',
     },
   },
   ops_keep_days: {
