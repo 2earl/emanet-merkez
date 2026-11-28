@@ -299,9 +299,27 @@ export function createApp(now: () => number) {
     if (!c.res.headers.has('Cache-Control')) c.res.headers.set('Cache-Control', 'no-store');
   });
 
+  /** The settings this app has words for; the core may know more (development mode has its own panel). */
+  const known = <T extends { key: string }>(list: T[]): T[] =>
+    list.filter((s) => (SETTING_KEYS as readonly string[]).includes(s.key));
+
+  /** Until when development mode is on; asked of the core at most every fifteen seconds. */
+  let devSeen: { at: number; until: number | null } | null = null;
+  const devUntil = async (c: AppContext, force = false): Promise<number | null> => {
+    const at = c.get('now');
+    if (!force && devSeen && at - devSeen.at < 15) return devSeen.until;
+    const status = await core(c.env).devMode();
+    const until = status.ok && status.value.active ? status.value.until : null;
+    devSeen = { at, until };
+    return until;
+  };
+
   const nav = (c: AppContext): pages.Nav => {
     const role = c.get('role') as AppEnv['Variables']['role'] | undefined;
-    return role ? { signedIn: true, role } : { signedIn: c.get('session') !== null };
+    const dev = c.get('dev') as number | null | undefined;
+    return role
+      ? { signedIn: true, role, dev: dev ?? null }
+      : { signedIn: c.get('session') !== null };
   };
 
   /**
@@ -330,6 +348,7 @@ export function createApp(now: () => number) {
       );
     }
     c.set('role', role);
+    c.set('dev', await devUntil(c));
     await next();
     return undefined;
   };
@@ -513,7 +532,11 @@ export function createApp(now: () => number) {
 
   app.get('/guide/:slug', async (c) => {
     const settings = await core(c.env).settingsInfo();
-    const page = more.guideChapter(nav(c), c.req.param('slug'), settings.ok ? settings.value : []);
+    const page = more.guideChapter(
+      nav(c),
+      c.req.param('slug'),
+      settings.ok ? known(settings.value) : [],
+    );
     return page === null ? notFound(c) : c.html(page);
   });
 
@@ -1200,15 +1223,16 @@ export function createApp(now: () => number) {
     status: 200 | 422 = 200,
     providerValues: Record<string, string> | null = null,
   ) => {
-    const [settings, rule, provider] = await Promise.all([
+    const [settings, rule, provider, dev] = await Promise.all([
       core(c.env).settingsInfo(),
       core(c.env).payoutRule(),
       core(c.env).provider(),
+      core(c.env).devMode(),
     ]);
     return c.html(
       more.settingsPage(
         nav(c),
-        unwrap(settings),
+        known(unwrap(settings)),
         unwrap(rule),
         can.change(role(c)),
         fresh(c),
@@ -1216,6 +1240,7 @@ export function createApp(now: () => number) {
         error,
         unwrap(provider),
         providerValues,
+        role(c) === 'owner' ? { until: dev.ok ? dev.value.until : null, act: fresh(c) } : null,
       ),
       status,
     );
@@ -1240,6 +1265,18 @@ export function createApp(now: () => number) {
       return showSettings(c, field ?? errorText(result.error), 422, v);
     }
     return c.redirect('/settings?done=saved', 303);
+  });
+
+  /** Development mode: only an owner, with a fresh second factor. */
+  app.post('/settings/dev-mode', async (c) => {
+    if (role(c) !== 'owner') return forbidden(c);
+    const denied = sensitive(c, '/settings');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).setDevMode(uid(c), v.on === '1');
+    if (!result.ok) return showSettings(c, errorText(result.error), 422);
+    await devUntil(c, true);
+    return c.redirect('/settings?done=saved#g-dev', 303);
   });
 
   app.get('/settings', (c) => showSettings(c, null));

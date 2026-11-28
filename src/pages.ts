@@ -74,6 +74,8 @@ export interface Nav {
   signedIn: boolean;
   role?: StaffRole;
   current?: Section;
+  /** Development mode is on until this time (Unix seconds). */
+  dev?: number | null;
 }
 
 export function plate(value: string | null, size: '' | 'large' = ''): string {
@@ -106,6 +108,16 @@ const ROLE_LABEL: Record<StaffRole, string> = {
   admin: 'Admin',
   support: 'Support',
 };
+
+/** Shown on every staff page while development mode is on, so nobody forgets it is. */
+function devBanner(until: number): string {
+  const time = new Intl.DateTimeFormat(currentLocale() === 'tr' ? 'tr-TR' : 'en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Istanbul',
+  }).format(new Date(until * 1000));
+  return `<p class="dev-banner" role="status" translate="no">${icon('alert')}<span><strong>${esc(L('Development mode is on.', 'Geliştirme modu açık.'))}</strong> ${esc(L(`Sign-off and document checks are lifted, and an inviter can approve their own company. It ends by itself at ${time} (Istanbul). Use test data only.`, `Onay ve belge kontrolleri kalktı; daveti gönderen kendi şirketini de onaylayabilir. Saat ${time} (İstanbul) olunca kendiliğinden kapanır. Yalnızca deneme verisi kullanın.`))} <a href="/settings#g-dev">${esc(L('Switch off', 'Kapat'))}</a></span></p>`;
+}
 
 export function layout(title: string, nav: Nav, body: string): string {
   const link = (key: Section, href: string, label: string, glyph: IconName) =>
@@ -154,6 +166,7 @@ export function layout(title: string, nav: Nav, body: string): string {
   ${who}
 </header>
 <main id="main">
+${nav.dev ? devBanner(nav.dev) : ''}
 ${body}
 </main>
 <footer>

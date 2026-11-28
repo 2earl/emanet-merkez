@@ -2880,3 +2880,19 @@ form.panel.stack {
 .ask-actions form.inline label {
   text-align: left;
 }
+
+/* ---- Development mode ----------------------------------------------------------------------- */
+
+.dev-banner {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin: 0 0 1rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--danger);
+  border-left-width: 5px;
+  border-radius: 10px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--paper));
+  font-weight: 500;
+}
