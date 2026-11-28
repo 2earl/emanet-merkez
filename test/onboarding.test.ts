@@ -96,6 +96,25 @@ describe('onboarding', () => {
     ]);
   });
 
+  it('lists what is missing before a company can be approved', async () => {
+    const cookie = await signIn('owner-1!aal2');
+    await coreHooks().testSignoffsOpen(['Legal', 'Accounting']);
+    const page = await (
+      await request('/onboarding/ob-signed', { headers: { Cookie: cookie } })
+    ).text();
+    expect(page).toContain('Before you approve');
+    expect(page).toContain('The sign-offs on the Readiness page are recorded.');
+    expect(page).toContain('href="/readiness"');
+    expect(page).toContain('Legal, Accounting');
+    expect(page).toContain('development mode');
+    expect(page).not.toContain('Approve and activate');
+    await coreHooks().testSignoffsOpen([]);
+    const clear = await (
+      await request('/onboarding/ob-signed', { headers: { Cookie: cookie } })
+    ).text();
+    expect(clear).toContain('Approve and activate');
+  });
+
   it('sends back, rejects, cancels and resends, each with what it needs', async () => {
     const cookie = await signIn('admin-2!aal2');
     expect((await post('/onboarding/ob-signed/return', cookie, { reason: '' })).status).toBe(422);

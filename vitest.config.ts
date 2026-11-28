@@ -94,6 +94,7 @@ function seed() {
   const t = now();
   s = {
     calls: [],
+    signoffsOpen: [],
     activation: { ready: false, items: [
       { key: 'application', ok: true, blocking: true },
       { key: 'documents', ok: false, blocking: true },
@@ -674,6 +675,18 @@ export class ControlApi extends WorkerEntrypoint {
     if (!o || !['in_progress', 'signed'].includes(o.status)) return fail('not_open');
     o.status = 'rejected'; o.decision_reason = reason; return ok({ emailed: true });
   }
+  async approvalChecklist(staffId, id) {
+    const o = s.onboardings.get(id);
+    if (!o) return fail('not_found');
+    const open = s.signoffsOpen ?? [];
+    const items = [
+      { key: 'agreement', ok: o.status === 'signed', blocking: true },
+      { key: 'details', ok: true, blocking: true },
+      { key: 'signoffs', ok: open.length === 0, blocking: true, detail: open },
+      { key: 'four_eyes', ok: o.invited_by !== staffId, blocking: true },
+    ];
+    return ok({ items, ready: items.every((i) => i.ok) });
+  }
   async approveOnboarding(staffId, id) {
     log('approveOnboarding', [staffId, id]);
     const o = s.onboardings.get(id);
@@ -684,6 +697,7 @@ export class ControlApi extends WorkerEntrypoint {
   async testCalls() { return s.calls; }
   async testReset() { seed(); }
   async testActivation(value) { s.activation = value; }
+  async testSignoffsOpen(list) { s.signoffsOpen = list; }
 }
 export default { fetch() { return new Response(null, { status: 404 }); } };
 `;
