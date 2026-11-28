@@ -654,6 +654,38 @@ describe('agents’ identity', () => {
   });
 });
 
+describe('before activating an agent', () => {
+  it('lists what is missing, points to Readiness and offers no button yet', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/agents/agent-1', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('Before you activate');
+    expect(page).toContain('Both e-Devlet documents are verified and clear.');
+    expect(page).toContain('href="/readiness"');
+    expect(page).toContain('Privacy arrangements reviewed, Accounting set up');
+    expect(page).not.toContain('Make the agent active');
+  });
+
+  it('offers the button once everything that blocks is met', async () => {
+    await coreHooks().testActivation({
+      ready: true,
+      items: [{ key: 'application', ok: true, blocking: true }],
+    });
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/agents/agent-1', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('Make the agent active');
+    expect(page).toContain('name="status" value="active"');
+    await coreHooks().testReset();
+  });
+
+  it('turns Turkish with the page', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const page = await (
+      await request('/agents/agent-1', { headers: { Cookie: admin, 'Accept-Language': 'tr' } })
+    ).text();
+    expect(page).toContain('Etkinleştirmeden önce');
+  });
+});
+
 describe('privacy', () => {
   it('finds what is held and deletes it with a reason and a fresh second factor', async () => {
     const admin = await signIn('admin-1!aal2');

@@ -478,6 +478,17 @@ export interface ReadinessCheck {
   signed_version?: string | null;
   note?: string | null;
 }
+export interface ActivationItem {
+  key: 'application' | 'documents' | 'requests' | 'signoffs' | 'video_call' | 'iban';
+  ok: boolean;
+  blocking: boolean;
+  /** signoffs: the readiness checks still open; requests: how many are unsettled. */
+  detail?: string[] | number;
+}
+export interface ActivationChecklist {
+  items: ActivationItem[];
+  ready: boolean;
+}
 export interface Readiness {
   checks: ReadinessCheck[];
   partners_ready: boolean;
@@ -806,6 +817,7 @@ export interface ControlApi {
     input: { number: string; uuid?: string | null },
   ): Promise<Result<null>>;
   kycChecks(agentId: string): Promise<Result<KycCheck[]>>;
+  activationChecklist(agentId: string): Promise<Result<ActivationChecklist>>;
   recordVideoCall(staffId: string, agentId: string, passed: boolean): Promise<Result<null>>;
   privacySearch(staffId: string, term: string): Promise<Result<Inventory>>;
   eraseEvidence(staffId: string, evidenceId: string, reason: string): Promise<Result<null>>;
