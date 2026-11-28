@@ -774,14 +774,78 @@ export function supportInbox(
   );
 }
 
+/**
+ * Saved replies: answers staff give often, written once. The text is Turkish because the people
+ * who write to us are; staff read it and change it before sending. `for` limits a reply to agents
+ * or companies. Choosing one reloads the page with the text in the reply box (no script).
+ */
+export const SAVED_REPLIES: {
+  key: string;
+  label: [string, string];
+  for?: 'agent' | 'partner';
+  text: string;
+}[] = [
+  {
+    key: 'looking',
+    label: ['We are looking into it', 'İnceliyoruz'],
+    text: 'Merhaba,\n\nMesajınızı aldık ve inceliyoruz. Sonucu buradan bildireceğiz.\n\n2earl Destek',
+  },
+  {
+    key: 'payment-when',
+    label: ['When a payment arrives', 'Ödeme ne zaman gelir'],
+    for: 'agent',
+    text: 'Merhaba,\n\nÖdemeniz, araç yediemine teslim edildikten ve alacaklı ödemesini yaptıktan sonra adınıza kayıtlı IBAN’a gönderilir. Güncel durumu Emanet Saha’da Kazançlar bölümünde görebilirsiniz; her ödemenin özeti oradan indirilebilir.\n\n2earl Destek',
+  },
+  {
+    key: 'documents',
+    label: ['A document is missing or unreadable', 'Belge eksik ya da okunmuyor'],
+    for: 'agent',
+    text: 'Merhaba,\n\nTeslimi onaylayabilmemiz için çekici tutanağı ve yediemin makbuzunun, plaka ve şasi numarası okunacak şekilde çekilmiş fotoğraflarına ihtiyacımız var. Lütfen İşlerim bölümünden aracı açıp belgeleri yeniden yükleyin.\n\n2earl Destek',
+  },
+  {
+    key: 'application',
+    label: ['Where an application stands', 'Başvuru ne durumda'],
+    for: 'agent',
+    text: 'Merhaba,\n\nBaşvurunuz bize ulaştı. Sıradaki adım kısa bir görüntülü görüşme: sizi kayıtlı cep telefonunuzdan arayacağız. Görüşmede T.C. kimlik kartınızı ve IBAN’ın adınıza olduğunu gösteren banka uygulamanızı hazır bulundurun.\n\n2earl Destek',
+  },
+  {
+    key: 'e-invoice',
+    label: ['The e-invoice', 'e-Fatura'],
+    for: 'partner',
+    text: 'Merhaba,\n\nResmî fatura e-Fatura sistemi üzerinden muhasebenize iletilir. Emanet Kurumsal’daki Faturalar sayfası faturalanan araçları listeler; aynı listeyi CSV olarak indirebilirsiniz. e-Fatura size ulaşmadıysa fatura numarasını yazın, kontrol edelim.\n\n2earl Destek',
+  },
+  {
+    key: 'case-status',
+    label: ['Where a case stands', 'Dosya ne durumda'],
+    for: 'partner',
+    text: 'Merhaba,\n\nDosyanın güncel aşamasını ve olanların zaman çizelgesini Emanet Kurumsal’da dosya sayfasında görebilirsiniz. Araç yediemine teslim edildiğinde tutanaklar aynı sayfaya eklenir ve sisteminize bildirim gider.\n\n2earl Destek',
+  },
+  {
+    key: 'solved',
+    label: ['Solved, closing', 'Çözüldü, kapatıyoruz'],
+    text: 'Merhaba,\n\nKonu çözüldüğü için bu mesajı kapatıyoruz. Başka bir sorunuz olursa 30 gün içinde buradan yanıt yazarak yeniden açabilirsiniz.\n\n2earl Destek',
+  },
+];
+
 export function supportThread(
   nav: Nav,
   t: TicketThread,
   staffId: string,
   errorText: string | null,
   noticeText: string | null,
+  /** The key of a saved reply to put in the reply box. */
+  replyKey = '',
 ): string {
   const open = t.ticket.status !== 'closed';
+  const offered = SAVED_REPLIES.filter((r) => !r.for || r.for === t.ticket.requester_kind);
+  const draft = offered.find((r) => r.key === replyKey)?.text ?? '';
+  const saved = `<p class="hint" style="margin-bottom:.4rem">${esc(L('Start from a saved reply, then make it fit:', 'Kayıtlı bir yanıtla başlayın, sonra duruma uyarlayın:'))}</p>
+    <ul class="filters">${offered
+      .map(
+        (r) =>
+          `<li><a href="/support/${attr(t.ticket.id)}?reply=${attr(r.key)}#reply"${r.key === replyKey ? ' aria-current="true"' : ''}>${esc(L(...r.label))}</a></li>`,
+      )
+      .join('')}</ul>`;
   const messages = t.messages
     .map((m) => {
       const label =
@@ -811,8 +875,9 @@ export function supportThread(
        <ul class="plain cards">${messages}</ul>
        ${
          open
-           ? `<form method="post" action="/support/${attr(t.ticket.id)}/reply" class="stack">
-                <label>${esc(L('Your reply', 'Yanıtınız'))} <textarea name="body" required minlength="2" maxlength="4000" rows="6"></textarea></label>
+           ? `<div id="reply">${saved}</div>
+              <form method="post" action="/support/${attr(t.ticket.id)}/reply" class="stack">
+                <label>${esc(L('Your reply', 'Yanıtınız'))} <textarea name="body" required minlength="2" maxlength="4000" rows="${draft ? '10' : '6'}">${esc(draft)}</textarea></label>
                 <div class="actions">
                   <button type="submit" name="note" value="">${esc(L('Send to them', 'Onlara gönder'))}</button>
                   <button class="secondary" type="submit" name="note" value="1">${esc(L('Save as internal note', 'İç not olarak kaydet'))}</button>

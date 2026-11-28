@@ -1533,7 +1533,10 @@ export function createApp(now: () => number) {
   const showTicket = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
     const found = await core(c.env).supportTicket(c.req.param('id') ?? '');
     if (!found.ok) return notFound(c);
-    return c.html(asks.supportThread(nav(c), found.value, uid(c), error, done(c)), status);
+    return c.html(
+      asks.supportThread(nav(c), found.value, uid(c), error, done(c), c.req.query('reply') ?? ''),
+      status,
+    );
   };
 
   app.get('/support/:id', (c) => showTicket(c, null));
