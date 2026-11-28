@@ -1542,6 +1542,7 @@ export function privacyPage(
      ${canChange && !fresh && f ? confirmFirst(`/privacy?q=${v.term}`) : ''}
      ${nothing ? '<p class="panel">Nothing is held for this.</p>' : ''}
      ${vehicle}${agent}${evidence}${onboardings}
+     ${canChange ? `<p translate="no"><a class="button secondary" href="/privacy/retention">${icon('scale')}<span>${esc(L('What is deleted when', 'Ne zaman ne silinir'))}</span></a></p>` : ''}
      ${canChange ? `<p translate="no"><a class="button secondary" href="/privacy/holds">${icon('lock')}<span>${esc(L('Legal holds', 'Yasal tutma'))}</span></a></p>` : ''}
      ${canChange ? `<p translate="no"><a class="button secondary" href="/privacy/archive">${icon('lock')}<span>${esc(L('Sealed archive of erased data', 'Silinen verilerin mühürlü arşivi'))}</span></a></p>` : ''}
      <h2 id="requests">Requests</h2>

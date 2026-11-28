@@ -11,6 +11,8 @@ import type {
   ArchivePayload,
   ArchiveView,
   Hold,
+  RetentionOverview,
+  RetentionRow,
   ErasureOverview,
 } from './core';
 import { icon } from './icons';
@@ -560,6 +562,112 @@ export function holdsPage(
            ? ''
            : `<h2>${esc(L('Lifted', 'Kaldırılanlar'))}</h2><div class="table-wrap"><table><thead><tr><th>${esc(L('What', 'Ne'))}</th><th>${esc(L('ID', 'Kimlik'))}</th><th>${esc(L('Reason', 'Gerekçe'))}</th><th>${esc(L('Held', 'Tutuldu'))}</th><th>${esc(L('Lifted because', 'Kaldırma gerekçesi'))}</th></tr></thead><tbody>${closedRows}</tbody></table></div>`
        }
+     </div>`,
+  );
+}
+
+/** The agent's page: whether the account is under a legal hold, and a way to set or lift one. */
+export function holdPanel(
+  agentId: string,
+  hold: Hold | null,
+  canChange: boolean,
+  fresh: boolean,
+): string {
+  if (!canChange) return '';
+  const back = `<input type="hidden" name="back" value="/agents/${attr(agentId)}">`;
+  if (hold) {
+    return `<div class="panel" translate="no"><h2>${esc(L('Legal hold', 'Yasal tutma'))}</h2>
+      <p>${icon('lock')} ${esc(L('Held since', 'Tutma tarihi'))} ${day(hold.set_at)}: ${esc(hold.reason)}. ${esc(L('Automatic deletion, the sealed archive’s destruction and erasure leave this agent alone.', 'Otomatik silme, mühürlü arşivin yok edilmesi ve silme bu görevliye dokunmaz.'))}</p>
+      ${
+        fresh
+          ? `<form method="post" action="/privacy/holds/${attr(hold.id)}/release" class="stack">${back}
+               <label>${esc(L('Reason to lift', 'Kaldırma gerekçesi'))} <input name="reason" required minlength="3" maxlength="300"></label>
+               <div><button class="secondary" type="submit">${esc(L('Lift the hold', 'Tutmayı kaldır'))}</button></div>
+             </form>`
+          : confirmFirst(`/agents/${agentId}`)
+      }</div>`;
+  }
+  return `<div translate="no"><h2>${esc(L('Legal hold', 'Yasal tutma'))}</h2>
+    ${
+      fresh
+        ? `<form method="post" action="/privacy/holds" class="stack">${back}
+             <input type="hidden" name="kind" value="agent"><input type="hidden" name="ref" value="${attr(agentId)}">
+             <label>${esc(L('Reason (a file number helps)', 'Gerekçe (dosya numarası yardımcı olur)'))} <input name="reason" required minlength="3" maxlength="300"></label>
+             <p class="hint">${esc(L('Use this while a dispute or an investigation may need this person’s data. It stops deletion, not the request.', 'Bir uyuşmazlık ya da soruşturma bu kişinin verisini gerektirebilirse kullanın. Silmeyi durdurur, talebi değil.'))}</p>
+             <div><button class="secondary" type="submit">${esc(L('Place a legal hold', 'Yasal tutma başlat'))}</button></div>
+           </form>`
+        : confirmFirst(`/agents/${agentId}`)
+    }</div>`;
+}
+
+const RETENTION_TEXT: Record<RetentionRow['key'], [string, string, string, string]> = {
+  failed_evidence: [
+    'Photos of claims that delivered nothing',
+    'Teslimatla sonuçlanmayan taleplerin fotoğrafları',
+    'After the claim closes',
+    'Talep kapandıktan sonra',
+  ],
+  delivered_evidence: [
+    'Photos of deliveries',
+    'Teslimat fotoğrafları',
+    'After the claim closes (commercial records retention)',
+    'Talep kapandıktan sonra (ticari kayıt saklama süresi)',
+  ],
+  abandoned_documents: [
+    'Documents of companies that never became partners',
+    'Ortak olmayan şirketlerin belgeleri',
+    'After the application ends',
+    'Başvuru sona erdikten sonra',
+  ],
+  partner_documents: [
+    'Documents of partners',
+    'Ortakların belgeleri',
+    'After approval (commercial records retention)',
+    'Onaydan sonra (ticari kayıt saklama süresi)',
+  ],
+  agent_documents: [
+    'Applicants’ e-Devlet documents nobody decided on',
+    'Kimsenin karara bağlamadığı başvuru e-Devlet belgeleri',
+    'After upload',
+    'Yüklemeden sonra',
+  ],
+  case_places: [
+    'Debtors’ street addresses on closed cases',
+    'Kapanan vakalardaki borçlu adresleri',
+    'After the case closes',
+    'Vaka kapandıktan sonra',
+  ],
+  archive: [
+    'Sealed archive of erased agents',
+    'Silinen görevlilerin mühürlü arşivi',
+    'After erasure',
+    'Silmeden sonra',
+  ],
+};
+
+/** What the cron deletes on its own, and how much the next run takes. */
+export function retentionPage(nav: Nav, o: RetentionOverview): string {
+  const rows = o.rows
+    .map((r) => {
+      const t = RETENTION_TEXT[r.key];
+      return `<tr>
+        <td>${esc(L(t[0], t[1]))}</td>
+        <td>${esc(L(t[2], t[3]))}</td>
+        <td>${String(r.days)} ${esc(L('days', 'gün'))}</td>
+        <td>${String(r.due)}</td>
+        <td>${r.held > 0 ? `<span class="status pending">${String(r.held)}</span>` : '0'}</td>
+      </tr>`;
+    })
+    .join('');
+  return layout(
+    L('What is deleted when', 'Ne zaman ne silinir'),
+    { ...nav, current: 'privacy' },
+    `<p class="crumbs"><a href="/privacy">Privacy</a> <span aria-hidden="true">/</span> <span translate="no">${esc(L('What is deleted when', 'Ne zaman ne silinir'))}</span></p>
+     <div translate="no">
+       <h1>${esc(L('What is deleted when', 'Ne zaman ne silinir'))}</h1>
+       <p class="lede">${esc(L('What the nightly run deletes without anyone asking. The days come from Settings → Privacy. “Next run” is how many records are past their time right now; “Held” are past their time but kept by a legal hold.', 'Gece çalışmasının kimse istemeden sildikleri. Gün sayıları Ayarlar → Gizlilik’ten gelir. “Sonraki çalışma”, süresi şu an dolmuş kayıt sayısıdır; “Tutulan”, süresi dolmuş ama yasal tutma altında kalanlardır.'))}</p>
+       <div class="table-wrap"><table><thead><tr><th>${esc(L('Data', 'Veri'))}</th><th>${esc(L('Counted from', 'Başlangıç'))}</th><th>${esc(L('Kept', 'Saklama'))}</th><th>${esc(L('Next run', 'Sonraki çalışma'))}</th><th>${esc(L('Held', 'Tutulan'))}</th></tr></thead><tbody>${rows}</tbody></table></div>
+       <p class="hint">${esc(L('Files queued for deletion that storage still holds:', 'Silinmek üzere kuyruğa alınmış, depoda hâlâ duran dosya:'))} ${String(o.files_waiting)}. ${esc(L('Open legal holds:', 'Açık yasal tutma:'))} <a href="/privacy/holds">${String(o.open_holds)}</a>.</p>
      </div>`,
   );
 }

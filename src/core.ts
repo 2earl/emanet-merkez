@@ -489,6 +489,26 @@ export interface ActivationChecklist {
   items: ActivationItem[];
   ready: boolean;
 }
+export interface RetentionRow {
+  key:
+    | 'failed_evidence'
+    | 'delivered_evidence'
+    | 'abandoned_documents'
+    | 'partner_documents'
+    | 'agent_documents'
+    | 'case_places'
+    | 'archive';
+  days: number;
+  due: number;
+  held: number;
+}
+
+export interface RetentionOverview {
+  rows: RetentionRow[];
+  files_waiting: number;
+  open_holds: number;
+}
+
 export interface Hold {
   id: string;
   subject_kind: 'agent' | 'case' | 'onboarding';
@@ -920,6 +940,7 @@ export interface ControlApi {
   ): Promise<Result<{ agent_id: string }>>;
   archives(term?: string): Promise<Result<ArchiveEntry[]>>;
   holds(): Promise<Result<Hold[]>>;
+  retentionOverview(): Promise<Result<RetentionOverview>>;
   placeHold(
     staffId: string,
     kind: string,

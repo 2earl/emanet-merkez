@@ -499,6 +499,21 @@ export class ControlApi extends WorkerEntrypoint {
     return ok({ request: id === 'agent-1' && !s.erasureClosed ? { id: 'pr-5', status: 'open', received_at: now() - 86400, due_at: now() + 29 * 86400, outcome: null, closed_at: null } : null,
       blockers: { open_claims: 1, payouts_pending: s.payoutsPending ?? 0, payouts_sent: 2 } });
   }
+  async retentionOverview() {
+    return ok({
+      rows: [
+        { key: 'failed_evidence', days: 30, due: 2, held: 0 },
+        { key: 'delivered_evidence', days: 3650, due: 0, held: 0 },
+        { key: 'abandoned_documents', days: 90, due: 1, held: 0 },
+        { key: 'partner_documents', days: 3650, due: 0, held: 0 },
+        { key: 'agent_documents', days: 90, due: 0, held: 0 },
+        { key: 'case_places', days: 30, due: 5, held: 1 },
+        { key: 'archive', days: 3650, due: 0, held: 0 },
+      ],
+      files_waiting: 3,
+      open_holds: 1,
+    });
+  }
   async holds() {
     return ok(s.holds ?? []);
   }
