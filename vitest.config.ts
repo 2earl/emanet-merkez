@@ -112,6 +112,11 @@ function seed() {
   s = {
     calls: [],
     signoffsOpen: [],
+    replies: [
+      { id: 'looking', title_en: 'We are looking into it', title_tr: 'İnceliyoruz', audience: 'all', body: 'Merhaba,\\n\\nİnceliyoruz.', position: 10, updated_by: 'system', updated_at: now() },
+      { id: 'payment-when', title_en: 'When a payment arrives', title_tr: 'Ödeme ne zaman gelir', audience: 'agent', body: 'Merhaba, ödemeniz alacaklı ödemesini yaptıktan sonra gelir.', position: 20, updated_by: 'system', updated_at: now() },
+      { id: 'e-invoice', title_en: 'The e-invoice', title_tr: 'e-Fatura', audience: 'partner', body: 'Merhaba, e-Fatura muhasebenize gelir.', position: 50, updated_by: 'system', updated_at: now() },
+    ],
     tickets: [
       { id: 'tk-1', requester_kind: 'agent', requester_ref: 'agent-1', subject: 'Ödemem gelmedi', category: 'payment', status: 'open', created_at: t - 90000, updated_at: t - 90000, first_response_at: null, closed_at: null, assigned_to: null, who: 'Ali Veli', messages: 1 },
       { id: 'tk-2', requester_kind: 'partner', requester_ref: 'partner-1', subject: 'Fatura sorusu', category: 'invoice', status: 'answered', created_at: t - 5000, updated_at: t - 3000, first_response_at: t - 3000, closed_at: null, assigned_to: null, who: 'Deneme Bankası', messages: 2 },
@@ -538,6 +543,28 @@ export class ControlApi extends WorkerEntrypoint {
     if (body.trim().length < 2) return fail('invalid_message');
     s.ticketMessages = { ...(s.ticketMessages ?? {}), [id]: [...(s.ticketMessages?.[id] ?? []), { id: 'm' + String(Math.random()), author_kind: note ? 'note' : 'staff', body, created_at: now() }] };
     if (!note) t.status = 'answered';
+    return ok(null);
+  }
+  async supportReplies() { return ok([...(s.replies ?? [])].sort((a, b) => a.position - b.position)); }
+  async saveSupportReply(staffId, input) {
+    log('saveSupportReply', [staffId, input]);
+    if (!input.title_en || input.title_en.length < 2 || !input.title_tr || input.title_tr.length < 2) return fail('invalid_title');
+    if (!['all', 'agent', 'partner'].includes(input.audience)) return fail('invalid_audience');
+    s.replies = s.replies ?? [];
+    if (input.id) {
+      const r = s.replies.find((x) => x.id === input.id);
+      if (!r) return fail('not_found');
+      Object.assign(r, input, { updated_by: staffId, updated_at: now() });
+      return ok({ id: r.id });
+    }
+    const id = 'rp-' + String(s.replies.length + 1);
+    s.replies.push({ id, position: 100, ...input, updated_by: staffId, updated_at: now() });
+    return ok({ id });
+  }
+  async deleteSupportReply(staffId, id) {
+    const i = (s.replies ?? []).findIndex((x) => x.id === id);
+    if (i < 0) return fail('not_found');
+    s.replies.splice(i, 1);
     return ok(null);
   }
   async supportAssign(staffId, id, to) {

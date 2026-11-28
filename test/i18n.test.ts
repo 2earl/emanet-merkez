@@ -149,6 +149,15 @@ describe('Turkish', () => {
     await send('/agents/agent-1/erase/refuse', admin, { reason: 'x' });
     await get('/support', admin);
     await get('/support/tk-1', admin);
+    await get('/support/tk-1?reply=payment-when', admin);
+    await get('/support/replies', admin);
+    await send('/support/replies', admin, {
+      title_en: 'x',
+      title_tr: 'y',
+      audience: 'all',
+      body: 'kısa',
+    });
+    await get('/support/replies?done=reply_saved', admin);
     await get('/privacy/holds', admin);
     await get('/privacy/retention', admin);
     await get('/privacy/archive', admin);
