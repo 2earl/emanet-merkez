@@ -2896,3 +2896,12 @@ form.panel.stack {
   background: color-mix(in srgb, var(--danger) 10%, var(--paper));
   font-weight: 500;
 }
+
+/* An empty to-do tile: still there, so the page keeps its shape, but quiet. */
+.counts a.zero {
+  opacity: 0.55;
+}
+.counts a.zero:hover,
+.counts a.zero:focus-visible {
+  opacity: 1;
+}

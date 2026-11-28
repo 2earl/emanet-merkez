@@ -420,6 +420,7 @@ export function createApp(now: () => number) {
     ]);
     const readiness = await core(c.env).readiness();
     const answered = await core(c.env).answeredRequests();
+    const support = await core(c.env).supportTickets({ status: 'open' });
     const reviews = { delivery: 0, missing_vin: 0, plate_conflict: 0 };
     for (const item of unwrap(queue)) reviews[item.kind]++;
     return c.html(
@@ -432,6 +433,7 @@ export function createApp(now: () => number) {
           payoutsApproved: unwrap(approved).length,
           agentsWaiting: unwrap(waiting).length,
           onboardingsSigned: unwrap(signed).length,
+          supportWaiting: support.ok ? support.value.length : 0,
         },
         c.get('now'),
         queues.ok ? queues.value : [],

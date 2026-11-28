@@ -582,6 +582,11 @@ describe('work queues and applications', () => {
     expect(page).toContain('1 overdue');
     expect(page).toContain('class="queue soon"');
     expect(page).toContain('Nothing waiting');
+    // Support waits on Today too; tiles with work come before the empty ones.
+    expect(page).toMatch(
+      /href="\/support\?status=open"><svg[^]*?<strong translate="no">1<\/strong>/,
+    );
+    expect(page).toContain('class="zero"');
   });
 
   it('sends an application back with what to correct', async () => {
