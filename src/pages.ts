@@ -1078,6 +1078,11 @@ export function agentDetail(
     !erased && canChange && fresh && (a.status === 'kyc_pending' || a.status === 'suspended')
       ? `<form method="post" action="${path}/video-call" class="stack">
            <label class="check"><input type="checkbox" name="seen" value="1" required> On a video call I saw this person hold their Turkish ID card: the photo is them, and the name is the name above.</label>
+           ${
+             a.status === 'kyc_pending'
+               ? `<label class="check"><input type="checkbox" name="activate" value="1" checked> If the call passed, make the agent active now (the same checks as “Before you activate” still apply).</label>`
+               : ''
+           }
            <div class="actions">
              <button type="submit" name="result" value="passed">Record the call as passed</button>
              <button class="secondary" type="submit" name="result" value="failed">It didn’t match</button>

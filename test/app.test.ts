@@ -649,6 +649,23 @@ describe('agents’ identity', () => {
     });
     expect(recorded.headers.get('Location')).toBe('/agents/agent-1?done=call_recorded');
     expect(await callsOf('recordVideoCall')).toEqual([['admin-1', 'agent-1', true]]);
+    const activated = await post('/agents/agent-1/video-call', admin, {
+      seen: '1',
+      result: 'passed',
+      activate: '1',
+    });
+    expect(activated.headers.get('Location')).toBe('/agents/agent-1?done=call_activated');
+    await coreHooks().testActivateBlocked('documents_not_verified');
+    const held = await post('/agents/agent-1/video-call', admin, {
+      seen: '1',
+      result: 'passed',
+      activate: '1',
+    });
+    expect(held.status).toBe(200);
+    const heldPage = await held.text();
+    expect(heldPage).toContain('the agent was not activated');
+    expect(heldPage).toContain('e-Devlet documents must be verified');
+    await coreHooks().testActivateBlocked(null);
     const support = await signIn('support-1!aal2');
     expect((await post('/agents/agent-1/video-call', support, { seen: '1' })).status).toBe(403);
   });
