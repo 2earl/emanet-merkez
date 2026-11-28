@@ -96,6 +96,10 @@ const ERROR_TEXT: Record<string, string> = {
   case_not_pending: 'This case isn’t waiting for a review any more.',
   invalid_vin: 'The chassis number must be 17 letters and digits, without I, O or Q.',
   invalid_reason: 'Enter a reason of at most 200 characters.',
+  legal_hold:
+    'This is under a legal hold. Lift it under Privacy → Legal holds first, and answer the request citing the hold.',
+  already_held: 'It is already held.',
+  invalid_hold: 'Choose what to hold.',
   duplicate_case: 'The partner already has an open case on that vehicle. Reject this one.',
   no_active_case: 'No active case on this vehicle any more.',
   no_payout_rule: 'Set the agents’ payout rule in Settings first.',
@@ -159,6 +163,8 @@ const DONE: Record<string, string> = {
   redacted: 'The addresses are erased.',
   request_opened: 'Request recorded. It must be answered within 30 days.',
   request_closed: 'Request closed.',
+  hold_placed: 'Held. Automatic deletion leaves it alone until you lift the hold.',
+  hold_released: 'Lifted. The retention rules apply again from the next run.',
   call_recorded:
     'Video call recorded. The agent is not active yet: use “Before you activate” below.',
   call_activated: 'Video call recorded and the agent is active. The agent is emailed.',
@@ -1436,6 +1442,41 @@ export function createApp(now: () => number) {
       return back(c, path === 'cases' ? 'redacted' : 'erased', v.q ?? '');
     });
   }
+
+  // ---- Legal holds: owner or admin only ----------------------------------------------------------
+
+  app.use('/privacy/holds', async (c: AppContext, next) =>
+    can.change(role(c)) ? next() : forbidden(c),
+  );
+  app.use('/privacy/holds/*', async (c: AppContext, next) =>
+    can.change(role(c)) ? next() : forbidden(c),
+  );
+
+  const showHolds = async (c: AppContext, error: string | null, status: 200 | 422 = 200) =>
+    c.html(
+      asks.holdsPage(nav(c), unwrap(await core(c.env).holds()), fresh(c), error, done(c)),
+      status,
+    );
+
+  app.get('/privacy/holds', (c) => showHolds(c, null));
+
+  app.post('/privacy/holds', async (c) => {
+    const denied = sensitive(c, '/privacy/holds');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).placeHold(uid(c), v.kind ?? '', v.ref ?? '', v.reason ?? '');
+    if (!result.ok) return showHolds(c, errorText(result.error), 422);
+    return c.redirect('/privacy/holds?done=hold_placed', 303);
+  });
+
+  app.post('/privacy/holds/:id/release', async (c) => {
+    const denied = sensitive(c, '/privacy/holds');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const result = await core(c.env).releaseHold(uid(c), c.req.param('id'), v.reason ?? '');
+    if (!result.ok) return showHolds(c, errorText(result.error), 422);
+    return c.redirect('/privacy/holds?done=hold_released', 303);
+  });
 
   // ---- The sealed archive of erased data: owner or admin only -----------------------------------
 

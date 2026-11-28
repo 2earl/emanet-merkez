@@ -10,6 +10,7 @@ import type {
   ArchiveEntry,
   ArchivePayload,
   ArchiveView,
+  Hold,
   ErasureOverview,
 } from './core';
 import { icon } from './icons';
@@ -475,4 +476,90 @@ export function archiveText(
   }
   lines.push(rule);
   return `${lines.join('\r\n')}\r\n`;
+}
+
+const HOLD_KIND: Record<Hold['subject_kind'], [string, string]> = {
+  agent: ['Agent', 'Görevli'],
+  case: ['Case', 'Vaka'],
+  onboarding: ['Company application', 'Şirket başvurusu'],
+};
+
+/** Legal holds: what automatic deletion must leave alone while a dispute is open. */
+export function holdsPage(
+  nav: Nav,
+  list: Hold[],
+  fresh: boolean,
+  errorText: string | null,
+  noticeText: string | null,
+): string {
+  const open = list.filter((h) => h.released_at === null);
+  const closed = list.filter((h) => h.released_at !== null);
+  const kind = (h: Hold) => L(...HOLD_KIND[h.subject_kind]);
+  const openRows = open
+    .map(
+      (h) => `<tr>
+        <td>${esc(kind(h))}</td>
+        <td><code>${esc(h.subject_ref)}</code></td>
+        <td>${esc(h.reason)}</td>
+        <td>${day(h.set_at)}</td>
+        <td>${
+          fresh
+            ? `<form method="post" action="/privacy/holds/${attr(h.id)}/release" class="inline">
+                 <label><span class="sr">${esc(L('Reason to lift', 'Kaldırma gerekçesi'))}</span><input name="reason" required minlength="3" maxlength="300" placeholder="${attr(L('Why it can be lifted', 'Neden kaldırılabilir'))}"></label>
+                 <button class="secondary" type="submit">${esc(L('Lift', 'Kaldır'))}</button>
+               </form>`
+            : confirmFirst('/privacy/holds')
+        }</td>
+      </tr>`,
+    )
+    .join('');
+  const closedRows = closed
+    .map(
+      (h) => `<tr>
+        <td>${esc(kind(h))}</td>
+        <td><code>${esc(h.subject_ref)}</code></td>
+        <td>${esc(h.reason)}</td>
+        <td>${day(h.set_at)} → ${h.released_at ? day(h.released_at) : ''}</td>
+        <td>${esc(h.release_reason ?? '')}</td>
+      </tr>`,
+    )
+    .join('');
+  const form = fresh
+    ? `<form method="post" action="/privacy/holds" class="stack">
+         <div class="grid2">
+           <label>${esc(L('What', 'Neyi'))} <select name="kind">
+             <option value="agent">${esc(L('Agent (account ID)', 'Görevli (hesap kimliği)'))}</option>
+             <option value="case">${esc(L('Case (case ID)', 'Vaka (vaka kimliği)'))}</option>
+             <option value="onboarding">${esc(L('Company application (ID)', 'Şirket başvurusu (kimlik)'))}</option>
+           </select></label>
+           <label>${esc(L('ID', 'Kimlik'))} <input name="ref" required maxlength="100" autocomplete="off"></label>
+         </div>
+         <label>${esc(L('Reason (a file number helps)', 'Gerekçe (dosya numarası yardımcı olur)'))} <input name="reason" required minlength="3" maxlength="300"></label>
+         <div><button type="submit">${esc(L('Place the hold', 'Tutmayı başlat'))}</button></div>
+       </form>`
+    : confirmFirst('/privacy/holds');
+  return layout(
+    L('Legal holds', 'Yasal tutma'),
+    { ...nav, current: 'privacy' },
+    `${notice(noticeText)}${errorText ? error(errorText) : ''}
+     <p class="crumbs"><a href="/privacy">Privacy</a> <span aria-hidden="true">/</span> <span translate="no">${esc(L('Legal holds', 'Yasal tutma'))}</span></p>
+     <div translate="no">
+       <h1>${esc(L('Legal holds', 'Yasal tutma'))}</h1>
+       <p class="lede">${esc(L('While a dispute or an investigation is open, a hold keeps the automatic deletions away from one agent, case or company application: files, addresses, the sealed archive, and erasure itself. Placing and lifting a hold need a reason and are recorded.', 'Bir uyuşmazlık ya da soruşturma sürerken tutma, bir görevli, vaka ya da şirket başvurusunu otomatik silmelerden korur: dosyalar, adresler, mühürlü arşiv ve silmenin kendisi. Tutmayı başlatmak ve kaldırmak gerekçe ister ve kaydedilir.'))}</p>
+       <h2>${esc(L('Open holds', 'Açık tutmalar'))}</h2>
+       ${
+         open.length === 0
+           ? `<p class="panel">${esc(L('Nothing is held.', 'Tutulan bir şey yok.'))}</p>`
+           : `<div class="table-wrap"><table><thead><tr><th>${esc(L('What', 'Ne'))}</th><th>${esc(L('ID', 'Kimlik'))}</th><th>${esc(L('Reason', 'Gerekçe'))}</th><th>${esc(L('Since', 'Tarih'))}</th><th></th></tr></thead><tbody>${openRows}</tbody></table></div>`
+       }
+       <h2>${esc(L('Place a hold', 'Tutma başlat'))}</h2>
+       ${form}
+       <p class="hint">${esc(L('A held erasure request stays open: answer it, citing the hold. When a hold is lifted, the next nightly run applies the retention rules again; an erasure the hold refused isn’t redone on its own.', 'Tutulan bir silme talebi açık kalır: tutmaya dayanarak yanıtlayın. Tutma kalkınca bir sonraki gece çalışması saklama kurallarını yeniden uygular; tutmanın reddettiği silme kendiliğinden yapılmaz.'))}</p>
+       ${
+         closed.length === 0
+           ? ''
+           : `<h2>${esc(L('Lifted', 'Kaldırılanlar'))}</h2><div class="table-wrap"><table><thead><tr><th>${esc(L('What', 'Ne'))}</th><th>${esc(L('ID', 'Kimlik'))}</th><th>${esc(L('Reason', 'Gerekçe'))}</th><th>${esc(L('Held', 'Tutuldu'))}</th><th>${esc(L('Lifted because', 'Kaldırma gerekçesi'))}</th></tr></thead><tbody>${closedRows}</tbody></table></div>`
+       }
+     </div>`,
+  );
 }
