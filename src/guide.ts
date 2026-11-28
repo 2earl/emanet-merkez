@@ -804,6 +804,208 @@ ${note('<strong>A criminal record is special-category personal data.</strong> It
 <p>That is a legal judgement, and the criterion has to be set with your lawyer and written down here. Until then: if there is a record, don’t activate, and leave the decision to an admin.</p>`,
   },
   {
+    slug: 'requests',
+    icon: 'mail',
+    title: { en: 'Asking an agent for more', tr: 'Görevliden bilgi ve belge istemek' },
+    summary: {
+      en: 'How to ask an applicant or an agent to correct a detail or give a document, and how each request is settled.',
+      tr: 'Başvurandan ya da görevliden bir bilgiyi düzeltmesi ya da belge vermesi nasıl istenir ve her talep nasıl sonuçlanır.',
+    },
+    body: (l) =>
+      l === 'tr'
+        ? `<p>Bir başvuruda bir bilgi yanlışsa, bir belge eksikse ya da karar verebilmek için başka bir belge görmeniz gerekiyorsa, bunu telefonda ya da e-postayla değil <strong>Merkez’den</strong> istersiniz. Böylece ne istendiği, ne zaman istendiği ve ne yanıt verildiği kayıt altında olur; belge e-postayla dolaşmaz.</p>
+${flow(['Görevlinin sayfası → “Bilgi ya da belge iste”', 'Görevliye e-posta gider', 'Görevli Emanet Saha’dan yanıtlar', 'Siz incelersiniz', 'Kabul / yeniden iste / geri çek'])}
+<h2>Ne isteyebilirsiniz</h2>
+${table(
+  ['Tür', 'Seçenekler', 'Görevli nasıl yanıtlar'],
+  [
+    [
+      'Düzeltilecek bilgi',
+      'Ad soyad, T.C. kimlik no, telefon, e-posta, adres, şehir, IBAN, vergi bilgileri',
+      'Bilgilerini düzeltir ve “Düzelttim” der; isterse not yazar.',
+    ],
+    ['Bir soru', '“Bir soru (yazıyla yanıtlanır)”', 'Yazıyla yanıtlar.'],
+    [
+      'Belge',
+      'Adli sicil kaydı, nüfus kayıt örneği, yerleşim yeri belgesi, sürücü belgesi, vergi levhası, IBAN belgesi, başka bir belge',
+      'Dosyayı yükler; e-Devlet belgelerinde barkod numarasını da yazar.',
+    ],
+  ],
+)}
+<p>Bir seferde en çok üç şey isteyebilirsiniz; her biri ayrı bir taleptir ve ayrı sonuçlanır. Her talep için görevliye <strong>bir not</strong> yazarsınız. Görevli tam olarak bunu okur: neyin yanlış olduğunu ve ne yapması gerektiğini, konuşur gibi yazın. Adli sicil kaydında ne yazdığını asla nota yazmayın.</p>
+<h2>İstediğinizde ne olur</h2>
+<ul>
+<li><strong>Başvuru incelemedeyse</strong> (kimlik doğrulaması bekliyor), başvuru başvurana geri döner. Her şeyi yanıtlayıp başvuruyu yeniden gönderene kadar sırada görünmez. Girdiği hiçbir şey kaybolmaz.</li>
+<li><strong>Görevli etkinse</strong>, çalışmaya devam eder. Etkin bir görevlinin kilitli bilgileri (ad, şehir, vergi bilgileri, kimlik no) yalnızca siz o bilgiyi istediğiniz sürece değiştirilebilir.</li>
+<li>Görevliye yanıt için {{agent_request_days}} verilir. Süre geçince talep sayfada “Gecikti” görünür; kendiliğinden bir şey olmaz. Arayın ya da talebi geri çekip başvuruyu reddedin.</li>
+</ul>
+<h2>Yanıt geldiğinde</h2>
+<p>Yanıtlar <strong>Bugün</strong> sayfasında “Görevlilerden gelen yanıtlar” altında görünür.</p>
+<ul>
+<li><strong>Bilgi:</strong> sayfanın başındaki bilgilerle karşılaştırın. Doğruysa “Yanıtı kabul et”. Değilse neyin hâlâ eksik olduğunu yazıp “Yeniden iste”.</li>
+<li><strong>Belge:</strong> belge, “Sözleşme ve belgeler” bölümünde görünür. Açın, doğrulayın, sonucu kaydedin. “Temiz” sonucu talebi kabul eder. “Eşleşmiyor” ya da “Geçersiz” belgeyi kendiliğinden yeniden ister ve görevliye e-posta gider. Karardan sonra dosya silinir.</li>
+<li>Artık gerek kalmadıysa “Bu talebi geri çek”.</li>
+</ul>
+${note('Sonuçlanmamış talebi olan bir başvuru yeniden gönderilemez ve görevli etkinleştirilemez. Etkinleştirmeden önce her talebi kabul edin ya da geri çekin.')}`
+        : `<p>When a detail in an application is wrong, a document is missing, or you need to see another document before you can decide, you ask for it <strong>in Merkez</strong>, not by phone or email. Then what was asked, when, and what was answered is on record, and no document travels by email.</p>
+${flow(['Agent’s page → “Ask for a detail or a document”', 'The agent is emailed', 'The agent answers in Emanet Saha', 'You check it', 'Accept / ask again / withdraw'])}
+<h2>What you can ask for</h2>
+${table(
+  ['Kind', 'Choices', 'How the agent answers'],
+  [
+    [
+      'A detail to correct',
+      'Name, T.C. kimlik no, phone, email, address, city, IBAN, tax details',
+      'Corrects their details and says “I corrected it”, with a note if they want.',
+    ],
+    ['A question', '“A question (answered in words)”', 'Answers in words.'],
+    [
+      'A document',
+      'Criminal record, population register extract, residence record, driving licence, tax certificate, proof of IBAN, another document',
+      'Uploads the file; for e-Devlet documents also types the barcode number.',
+    ],
+  ],
+)}
+<p>You can ask for up to three things at once; each is its own request and is settled on its own. For each you write <strong>a note</strong> to the agent. They read exactly that: say what is wrong and what to do, as you would speak. Never write what a criminal record says.</p>
+<h2>What happens when you ask</h2>
+<ul>
+<li><strong>An application under review</strong> (waiting for the identity check) goes back to the applicant. It leaves the queue until they have answered everything and sent it again. Nothing they entered is lost.</li>
+<li><strong>An active agent</strong> keeps working. An active agent’s locked details (name, city, tax details, ID number) can be changed only while you are asking for that detail.</li>
+<li>The agent is given {{agent_request_days}} to answer. After that the request shows “Late” on the page; nothing happens by itself. Call them, or withdraw the request and reject the application.</li>
+</ul>
+<h2>When the answer comes</h2>
+<p>Answers appear on <strong>Today</strong> under “Answers from agents”.</p>
+<ul>
+<li><strong>A detail:</strong> compare with the details at the top of the page. If right, “Accept the answer”. If not, write what is still missing and “Ask again”.</li>
+<li><strong>A document:</strong> it appears under “Agreement and documents”. Open it, verify it, record the result. “Clear” accepts the request. “Doesn’t match” or “Not valid” asks for it again by itself and emails the agent. The file is deleted with the decision.</li>
+<li>If you no longer need it, “Withdraw this request”.</li>
+</ul>
+${note('An application with an unsettled request can’t be sent again and the agent can’t be activated. Accept or withdraw every request before you activate.')}`,
+  },
+  {
+    slug: 'erasure',
+    icon: 'lock',
+    title: { en: 'Erasure and the sealed archive', tr: 'Silme ve mühürlü arşiv' },
+    summary: {
+      en: 'How an agent’s request to be erased is carried out or refused, what is removed, what is kept sealed, and who may open it.',
+      tr: 'Görevlinin silme talebi nasıl yerine getirilir ya da reddedilir; ne kaldırılır, ne mühürlü saklanır ve kim açabilir.',
+    },
+    body: (l) =>
+      l === 'tr'
+        ? `<p>Her görevli, Emanet Saha’daki <strong>“Verilerim”</strong> sayfasından kişisel verilerinin silinmesini isteyebilir. Talep kendiliğinden <strong>Gizlilik → Talepler</strong> listesine düşer ve {{privacy_request_days}} içinde yanıtlanmak zorundadır (KVKK m.13). Görevli, karar verilene kadar talebini geri alabilir.</p>
+${flow(['Görevli talep eder', 'Gizlilik → Talepler', 'Yönetici: “Yerine getir ya da reddet”', 'Silinir ve mühürlenir', 'Görevliye e-posta'])}
+<h2>Karar: yalnızca sahip ya da yönetici</h2>
+<p>Silme sayfası, silmenin neyi durduracağını gösterir:</p>
+${table(
+  ['Durum', 'Ne yaparsınız'],
+  [
+    [
+      'Gönderilmemiş ödeme var',
+      'Silme, ödemenin yapılacağı IBAN’ı da kaldırır; sistem silmeye izin vermez. Önce ödemeyi gönderin, sonra silin. Otuz gün yetmeyecekse talebi gerekçesiyle reddedin ve ödeme sonrası yeniden başvurabileceğini yazın.',
+    ],
+    ['Açık üstlenme var', 'Silmeyle birlikte bırakılır. Engel değildir.'],
+    [
+      'Gönderilmiş ödeme var',
+      'Engel değildir. Vergi belgeleri için kimlik numarası ve adres şifreli olarak yerinde kalır; diğer her şey gider.',
+    ],
+    ['İncelemede bir teslim var', 'Önce incelemeyi sonuçlandırın.'],
+  ],
+)}
+<p>Reddederseniz gerekçeniz görevliye <strong>aynen</strong> e-postayla gider. Ret hukuka dayanmalıdır: hangi yükümlülüğün engel olduğunu ve ne zaman yeniden başvurabileceğini yazın.</p>
+<h2>Silme ne yapar</h2>
+<ul>
+<li><strong>Kaldırılır:</strong> ad soyad, kimlik numarası, telefon, e-posta, adres, şehir, IBAN, vergi bilgileri, kimlik doğrulama kayıtları, belgeler, personelin talepleri. Hesap kalıcı olarak kapanır.</li>
+<li><strong>Kalır:</strong> ödemeler ve yevmiye (VUK 253, TTK 82). Artık kimseyi göstermeyen bir hesap kimliğine bağlıdır.</li>
+<li><strong>Mühürlenir:</strong> kaldırılanların şifreli bir kopyası ve depoda duran belgeler, mühürlü arşive alınır.</li>
+<li><strong>Yok edilir:</strong> adli sicil kaydı dosyası. Arşive alınmaz; özel nitelikli veridir ve açık rızaya dayanır, silme talebi bu rızayı geri alır.</li>
+</ul>
+<p>Görevli hesabını login.2earl.com üzerinden silerse aynı işlem sorulmadan yapılır.</p>
+<h2>Mühürlü arşiv nedir, ne değildir</h2>
+<p>Arşiv, silinen verilerin <strong>şifreli</strong> bir kopyasıdır. Tek amacı; mahkeme, savcılık, bir kurum ya da bir uyuşmazlık sorduğunda yanıt verebilmektir. Ürünün hiçbir yeri arşivi okumaz; listede kimsenin adı görünmez. {{erasure_archive_days}} sonra içerik ve dosyalar kendiliğinden yok edilir; yalnızca “şu tarihte silindi, şu tarihte yok edildi” satırı kalır.</p>
+${note('Bu, KVKK m.7 anlamında silme değil, erişimi kısıtlı saklamadır. Görevlilere verilen aydınlatma metni bunu açıkça söyler. Hukuki dayanağı ve süresi avukatın onayına bağlıdır (Hazırlık sayfası).')}
+<h2>Arşivden bir kaydı açmak</h2>
+<ol>
+<li><strong>Gizlilik → Silinen verilerin mühürlü arşivi.</strong> Yalnızca sahip ve yönetici görür.</li>
+<li>Kaydı hesap kimliği, arşiv kimliği ya da kişinin o zamanki e-posta adresi ile bulun.</li>
+<li><strong>Gerekçeyi yazın:</strong> dosya ya da yazı numarası ve kimin istediği (“İzmir 3. Asliye Hukuk 2027/123 sayılı yazı”). En az on karakter. “Bakmak için” bir gerekçe değildir.</li>
+<li>“Aç ve indir”: kayıt düz metin (.txt) olarak iner. Dosyalar ayrı ayrı, her biri kendi gerekçesiyle indirilir.</li>
+</ol>
+<p>Her açılış, dosya oluşturulmadan <strong>önce</strong> kaydedilir: kim, ne zaman, neyi, neden. Bu kayıt arşiv sayfasında ve denetim kaydında görünür ve değiştirilemez. İndirdiğiniz dosya artık sizin sorumluluğunuzdadır: yalnızca iş gerektirdiği sürece saklayın, paylaşırken şifreli kanal kullanın, iş bitince silin.</p>
+${table(
+  ['Soru', 'Yanıt'],
+  [
+    [
+      'Arşivden veri geri yüklenebilir mi?',
+      'Hayır. Arşiv bir geri dönüş yolu değildir; görevli yeniden çalışmak isterse yeni bir hesapla baştan başvurur.',
+    ],
+    [
+      'Kişi “arşivdeki kopyamı da silin” derse?',
+      'Talebi Gizlilik sayfasına kaydedin ve avukata sorun. Karar hukuki bir değerlendirmedir.',
+    ],
+    [
+      'Destek personeli arşivi görebilir mi?',
+      'Hayır. Liste de kayıtlar da yalnızca sahip ve yöneticiye açıktır; indirme için ayrıca son 15 dakika içinde ikinci doğrulama gerekir.',
+    ],
+  ],
+)}`
+        : `<p>Every agent can ask for their personal data to be erased, on the <strong>“My data”</strong> page in Emanet Saha. The request arrives by itself under <strong>Privacy → Requests</strong> and must be answered within {{privacy_request_days}} (KVKK art. 13). The agent can withdraw it until it is decided.</p>
+${flow(['The agent asks', 'Privacy → Requests', 'An admin: “Carry out or refuse”', 'Erased and sealed', 'The agent is emailed'])}
+<h2>The decision: owner or admin only</h2>
+<p>The erase page shows what erasing would stop:</p>
+${table(
+  ['Situation', 'What you do'],
+  [
+    [
+      'A payout is not sent yet',
+      'Erasing removes the IBAN it would be paid to, so the system won’t erase. Send the payout first, then erase. If thirty days won’t be enough, refuse with the reason and say they can ask again once paid.',
+    ],
+    ['An open claim', 'Released with the erasure. Not an obstacle.'],
+    [
+      'A payout was sent',
+      'Not an obstacle. The ID number and address stay sealed in place for the tax documents; everything else goes.',
+    ],
+    ['A delivery under review', 'Decide the review first.'],
+  ],
+)}
+<p>If you refuse, the agent is emailed your reason <strong>word for word</strong>. A refusal must rest on the law: say which obligation stops you and when they can ask again.</p>
+<h2>What erasing does</h2>
+<ul>
+<li><strong>Removed:</strong> name, ID number, phone, email, address, city, IBAN, tax details, identity-check records, documents, requests from staff. The account is closed for good.</li>
+<li><strong>Kept:</strong> payouts and the journal (VUK 253, TTK 82), tied to an account ID that no longer names anyone.</li>
+<li><strong>Sealed:</strong> one encrypted copy of what was removed, and the documents still in storage, go into the sealed archive.</li>
+<li><strong>Destroyed:</strong> the file of a criminal record. It is never archived: it is special-category data held on explicit consent, and a request to erase withdraws that consent.</li>
+</ul>
+<p>If the agent deletes their account at login.2earl.com, the same happens without asking.</p>
+<h2>What the sealed archive is, and isn’t</h2>
+<p>The archive is an <strong>encrypted</strong> copy of what was erased. Its only purpose is to answer a court, a prosecutor, an authority or a claim. Nothing in the product reads it, and its list names nobody. After {{erasure_archive_days}} the content and files are destroyed by themselves; only the line “erased on, destroyed on” remains.</p>
+${note('This is restricted storage, not deletion in the sense of KVKK art. 7. The privacy notice given to agents says so plainly. Its legal basis and its period depend on the lawyer’s sign-off (the Readiness page).')}
+<h2>Opening a record</h2>
+<ol>
+<li><strong>Privacy → Sealed archive of erased data.</strong> Only owners and admins see it.</li>
+<li>Find the record by the account ID, the archive ID, or the email address the person had.</li>
+<li><strong>Write the reason:</strong> the case or letter number and who asked (“İzmir 3rd Civil Court, letter 2027/123”). At least ten characters. “To have a look” is not a reason.</li>
+<li>“Open and download”: the record comes as plain text (.txt). Files are downloaded one by one, each with its own reason.</li>
+</ol>
+<p>Every opening is recorded <strong>before</strong> the file is made: who, when, what, why. That record shows on the archive page and in the audit log and can’t be changed. The downloaded file is now your responsibility: keep it only as long as the matter needs, share it over an encrypted channel, delete it when done.</p>
+${table(
+  ['Question', 'Answer'],
+  [
+    [
+      'Can data be restored from the archive?',
+      'No. The archive is not a way back; an agent who wants to work again applies from the start with a new account.',
+    ],
+    [
+      'What if the person says “erase the archived copy too”?',
+      'Record the request under Privacy and ask the lawyer. The decision is a legal assessment.',
+    ],
+    [
+      'Can support staff see the archive?',
+      'No. The list and the records are open to owners and admins only; a download also needs a second factor from the last 15 minutes.',
+    ],
+  ],
+)}`,
+  },
+  {
     slug: 'readiness',
     icon: 'scale',
     title: { en: 'Before the first customer', tr: 'İlk müşteriden önce' },

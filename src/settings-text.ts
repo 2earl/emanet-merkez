@@ -18,6 +18,7 @@ export const SETTING_KEYS = [
   'email_code_minutes',
   'agent_mail',
   'require_documents',
+  'agent_request_days',
   'invitation_days',
   'onboarding_sla_hours',
   'expiry_warning_days',
@@ -32,6 +33,7 @@ export const SETTING_KEYS = [
   'evidence_retention_days',
   'failed_claim_evidence_days',
   'place_retention_days',
+  'erasure_archive_days',
   'abandoned_onboarding_days',
   'privacy_request_days',
   'alert_interval_minutes',
@@ -70,6 +72,7 @@ export const SETTING_UNITS: Record<SettingKey, SettingUnit> = {
   email_code_minutes: 'minutes',
   agent_mail: 'switch',
   require_documents: 'switch',
+  agent_request_days: 'days',
   invitation_days: 'days',
   onboarding_sla_hours: 'hours',
   expiry_warning_days: 'days',
@@ -84,6 +87,7 @@ export const SETTING_UNITS: Record<SettingKey, SettingUnit> = {
   evidence_retention_days: 'days',
   failed_claim_evidence_days: 'days',
   place_retention_days: 'days',
+  erasure_archive_days: 'days',
   abandoned_onboarding_days: 'days',
   privacy_request_days: 'days',
   alert_interval_minutes: 'minutes',
@@ -299,6 +303,26 @@ export const SETTING_TEXT: Record<SettingKey, Both<Words>> = {
     tr: {
       label: 'Başvuranlardan e-Devlet belgeleri',
       help: 'Açık: başvuru ancak adli sicil kaydı ve nüfus kayıt örneği yüklenmişse gönderilebilir; görevli ancak ekip iki belgeyi de e-Devlet’te doğrulayıp temiz bulduktan sonra etkinleşir.',
+    },
+  },
+  agent_request_days: {
+    en: {
+      label: 'Days to answer a request from staff',
+      help: 'When staff ask an applicant or an agent for a detail or a document, the email and the app say to answer within this many days. After that the request shows as late on the agent’s page; nothing happens by itself.',
+    },
+    tr: {
+      label: 'Personel talebini yanıtlama süresi (gün)',
+      help: 'Personel bir başvurandan ya da görevliden bilgi veya belge istediğinde, e-posta ve uygulama bu kadar gün içinde yanıtlanmasını söyler. Süre geçince talep görevlinin sayfasında gecikmiş görünür; kendiliğinden bir işlem yapılmaz.',
+    },
+  },
+  erasure_archive_days: {
+    en: {
+      label: 'Sealed archive of erased data',
+      help: 'How long the encrypted copy of an erased agent’s data is kept before its content is destroyed. 3650 days is the general limitation period (TBK 146). Shorter is safer for privacy; ask the lawyer before changing it. A change applies to data erased from then on.',
+    },
+    tr: {
+      label: 'Silinen verilerin mühürlü arşivi',
+      help: 'Silinen bir görevlinin verilerinin şifreli kopyasının, içeriği yok edilmeden önce ne kadar saklanacağı. 3650 gün genel zamanaşımı süresidir (TBK 146). Daha kısa süre gizlilik açısından daha güvenlidir; değiştirmeden önce avukata danışın. Değişiklik, o andan sonra silinen veriler için geçerlidir.',
     },
   },
   invitation_days: {

@@ -309,6 +309,8 @@ export function today(
   queues: Queue[] = [],
   /** Whether the lawyer's and accountant's sign-offs are in; null when unknown. */
   ready: boolean | null = null,
+  /** More to do, drawn elsewhere: answers from agents (src/pages-requests.ts). */
+  extra = '',
 ): string {
   const tile = (href: string, count: number, label: string, glyph: IconName) =>
     `<a href="${href}">${icon(glyph)}<strong translate="no">${String(count)}</strong><span>${label}</span></a>`;
@@ -337,6 +339,7 @@ export function today(
        ${tile('/money#payouts', t.payoutsReady, 'Payouts to order', 'wallet')}
        ${tile('/money#payouts', t.payoutsApproved, 'Payouts to send', 'money')}
      </div>
+     ${extra}
      <h2>To invoice</h2>
      ${
        t.uninvoiced.length === 0
@@ -1056,9 +1059,10 @@ export function agentDetail(
           </form>`
         : confirmFirst(path)
       : '';
-  const needsConfirm = canChange && !fresh;
+  const erased = Boolean(a.erased_at);
+  const needsConfirm = canChange && !fresh && !erased;
   const call =
-    canChange && fresh && (a.status === 'kyc_pending' || a.status === 'suspended')
+    !erased && canChange && fresh && (a.status === 'kyc_pending' || a.status === 'suspended')
       ? `<form method="post" action="${path}/video-call" class="stack">
            <label class="check"><input type="checkbox" name="seen" value="1" required> On a video call I saw this person hold their Turkish ID card: the photo is them, and the name is the name above.</label>
            <div class="actions">
@@ -1068,7 +1072,7 @@ export function agentDetail(
          </form>`
       : '';
   const status =
-    canChange && fresh
+    canChange && fresh && !erased
       ? `<h2>Change status</h2>
        <form method="post" action="${path}/status" class="stack">
          <div class="grid2">
@@ -1104,6 +1108,8 @@ export function agentDetail(
      <h1>${a.legal_name ? data(a.legal_name) : 'No name yet'} <span class="status ${a.status}">${AGENT_STATUS[a.status]}</span></h1>
      ${error(errorText)}
      ${returned}
+     ${erased ? `<p class="notice" translate="no">${icon('lock')} ${esc(L('This person’s data was erased on', 'Bu kişinin verileri silindi:'))} ${day(a.erased_at ?? null)}. ${esc(L('What remains here names nobody. Admins find the sealed record under Privacy → Sealed archive.', 'Burada kalanlar kimseyi göstermez. Yöneticiler mühürlü kaydı Gizlilik → Mühürlü arşiv altında bulur.'))}</p>` : ''}
+     ${!erased && (a.requests_open ?? 0) + (a.requests_answered ?? 0) > 0 ? `<p class="notice" translate="no">${icon('mail')} ${esc(L(`${String(a.requests_open ?? 0)} request(s) wait for the agent, ${String(a.requests_answered ?? 0)} answer(s) wait for you.`, `${String(a.requests_open ?? 0)} talep görevliyi, ${String(a.requests_answered ?? 0)} yanıt sizi bekliyor.`))} <a href="#requests">${esc(L('See them', 'Göster'))}</a></p>` : ''}
      <div class="workspace"><div class="workspace-main">
      <div class="panel"><dl class="facts">
        <dt>Mobile</dt><dd>${a.phone ? `<a href="tel:${attr(a.phone)}" translate="no">${esc(a.phone)}</a>` : '—'}</dd>
@@ -1131,8 +1137,10 @@ export function agentDetail(
          ${!canChange ? `<p class="hint" translate="no">${esc(L('An owner or admin decides.', 'Kararı sahip ya da yönetici verir.'))}</p>` : ''}
          ${sendBack}
          ${status}
-         <p class="hint" translate="no">${esc(L('Activation needs: a verified email, an ID number, both e-Devlet documents clear, a passed video call, a verified IBAN, and the sign-offs on the Readiness page.', 'Etkinleştirme için: doğrulanmış e-posta, kimlik numarası, iki e-Devlet belgesinin de temiz olması, başarılı görüntülü görüşme, doğrulanmış IBAN ve Hazırlık sayfasındaki onaylar gerekir.'))}</p>
+         <p class="hint" translate="no">${esc(L('Activation needs: a verified email, an ID number, both e-Devlet documents clear, every request to the agent settled, a passed video call, a verified IBAN, and the sign-offs on the Readiness page.', 'Etkinleştirme için: doğrulanmış e-posta, kimlik numarası, iki e-Devlet belgesinin de temiz olması, görevliden istenenlerin tümünün sonuçlanması, başarılı görüntülü görüşme, doğrulanmış IBAN ve Hazırlık sayfasındaki onaylar gerekir.'))}</p>
+         <p class="hint" translate="no">${esc(L('Is a detail wrong or a document missing?', 'Bir bilgi yanlış ya da bir belge eksik mi?'))} <a href="#requests">${esc(L('Ask the agent for it', 'Görevliden isteyin'))}</a></p>
        </div>
+       ${canChange && !erased ? `<div class="panel" translate="no"><h2>${esc(L('Personal data', 'Kişisel veriler'))}</h2><p class="hint">${esc(L('On the person’s request, or when the law says so, erase their data. A sealed copy is archived.', 'Kişinin talebi üzerine ya da mevzuat gerektirdiğinde verilerini silin. Mühürlü bir kopya arşivlenir.'))}</p><p><a class="button secondary" href="${path}/erase">${icon('lock')}<span>${esc(L('Erase personal data', 'Kişisel verileri sil'))}</span></a></p></div>` : ''}
      </aside></div>`,
   );
 }
@@ -1481,15 +1489,21 @@ export function privacyPage(
               <td><a href="/privacy?q=${encodeURIComponent(r.subject_ref)}" translate="no">${esc(r.subject_ref)}</a></td>
               <td>${SUBJECT_KIND[r.subject_kind]}</td>
               <td>${day(r.due_at)}</td>
-              <td><span class="status ${overdue ? 'overdue' : r.status}">${overdue ? 'Overdue' : r.status === 'open' ? 'Open' : r.status === 'done' ? 'Answered' : 'Refused'}</span></td>
+              <td><span class="status ${overdue ? 'overdue' : r.status}">${overdue ? 'Overdue' : r.status === 'open' ? 'Open' : r.status === 'done' ? 'Answered' : r.status === 'withdrawn' ? 'Withdrawn' : 'Refused'}</span></td>
               <td>${r.outcome ? data(r.outcome) : ''}</td>
               <td>${
-                r.status === 'open' && canChange
-                  ? `<form method="post" action="/privacy/requests/${attr(r.id)}/close" class="inline">
+                r.status === 'open' &&
+                canChange &&
+                r.kind === 'erasure' &&
+                r.subject_kind === 'agent' &&
+                r.channel === 'saha'
+                  ? `<a class="button" href="/agents/${attr(r.subject_ref)}/erase" translate="no">${esc(L('Carry out or refuse', 'Yerine getir ya da reddet'))}</a>`
+                  : r.status === 'open' && canChange
+                    ? `<form method="post" action="/privacy/requests/${attr(r.id)}/close" class="inline">
                       <label class="sr">What was done <input name="outcome" required maxlength="1000" placeholder="What was done" autocomplete="off"></label>
                       <button type="submit" name="status" value="done">Answered</button>
                       <button class="secondary" type="submit" name="status" value="refused">Refused</button></form>`
-                  : ''
+                    : ''
               }</td></tr>`;
           })
           .join('')}</tbody></table>`;
@@ -1510,8 +1524,10 @@ export function privacyPage(
      ${canChange && !fresh && f ? confirmFirst(`/privacy?q=${v.term}`) : ''}
      ${nothing ? '<p class="panel">Nothing is held for this.</p>' : ''}
      ${vehicle}${agent}${evidence}${onboardings}
-     <h2>Requests</h2>
+     ${canChange ? `<p translate="no"><a class="button secondary" href="/privacy/archive">${icon('lock')}<span>${esc(L('Sealed archive of erased data', 'Silinen verilerin mühürlü arşivi'))}</span></a></p>` : ''}
+     <h2 id="requests">Requests</h2>
      <p class="hint">Record every request the day it arrives (KVKK art. 13: answered within 30 days, free of charge).</p>
+     <p class="hint" translate="no">${esc(L('An agent’s own request to be erased arrives here from Emanet Saha by itself.', 'Bir görevlinin kendi silme talebi buraya Emanet Saha’dan kendiliğinden düşer.'))}</p>
      ${requests}
      ${
        canChange

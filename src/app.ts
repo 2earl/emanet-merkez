@@ -47,6 +47,7 @@ import { registerOnboarding } from './onboarding';
 import * as pages from './pages';
 import * as more from './pages-more';
 import * as ops from './pages-ops';
+import * as asks from './pages-requests';
 import { SETTING_KEYS, SETTING_TEXT, type SettingKey } from './settings-text';
 
 /** Emanet Merkez: the 2earl staff console (emanet-core docs/DESIGN.md §7). */
@@ -55,6 +56,16 @@ const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 
 /** What a person reads for each core error code. */
 const ERROR_TEXT: Record<string, string> = {
+  requests_pending:
+    'Requests to this agent are not settled yet. Accept the answers or withdraw the requests first.',
+  request_not_open: 'This request is already settled.',
+  invalid_ask:
+    'Choose what to ask for, and write the agent a few words for each (5 to 300 characters).',
+  payouts_pending: 'Payouts are waiting for this agent. Send them first, or refuse the request.',
+  already_erased: 'This agent’s data is already erased.',
+  confirm_erase: 'Type SİL to confirm.',
+  archive_destroyed: 'This record’s time ended and its content was destroyed.',
+  agent_not_active: 'This account is closed; nothing can be asked of it.',
   not_found: 'It isn’t there any more. Someone may have dealt with it already.',
   missing_legal_name: 'Enter the legal name.',
   invalid_vkn: 'The tax number has 10 digits (11 for a person).',
@@ -151,6 +162,10 @@ const DONE: Record<string, string> = {
   saved: 'Saved.',
   reset: 'Back to the default.',
   document_decided: 'Result recorded. The file is being deleted.',
+  asked: 'Sent. The agent is emailed what you asked for.',
+  request_settled: 'Saved.',
+  erased_agent: 'Erased. The sealed record is below; the agent was told.',
+  erasure_refused: 'Refused. The agent is emailed your reason.',
   signed: 'Sign-off recorded.',
   unsigned: 'Sign-off withdrawn.',
   month_closed: 'Marked as handed to the accountant.',
@@ -362,6 +377,7 @@ export function createApp(now: () => number) {
       core(c.env).queues(),
     ]);
     const readiness = await core(c.env).readiness();
+    const answered = await core(c.env).answeredRequests();
     const reviews = { delivery: 0, missing_vin: 0, plate_conflict: 0 };
     for (const item of unwrap(queue)) reviews[item.kind]++;
     return c.html(
@@ -381,6 +397,7 @@ export function createApp(now: () => number) {
           ? !readiness.value.enforced ||
               (readiness.value.partners_ready && readiness.value.agents_ready)
           : null,
+        asks.answeredPanel(answered.ok ? answered.value : []),
       ),
     );
   });
@@ -842,10 +859,11 @@ export function createApp(now: () => number) {
       (a) => a.user_id === c.req.param('id'),
     );
     if (!agent) return notFound(c);
-    const [checks, documents, accepted] = await Promise.all([
+    const [checks, documents, accepted, asked] = await Promise.all([
       core(c.env).kycChecks(agent.user_id),
       core(c.env).agentDocuments(agent.user_id),
       core(c.env).agentAcceptance(agent.user_id),
+      core(c.env).agentRequests(agent.user_id),
     ]);
     return c.html(
       pages.agentDetail(
@@ -861,11 +879,106 @@ export function createApp(now: () => number) {
           documents.ok ? documents.value : [],
           accepted.ok ? accepted.value : null,
           can.change(role(c)) && fresh(c),
-        ),
+        ) +
+          asks.requestsPanel(agent, asked.ok ? asked.value : [], can.review(role(c)), c.get('now')),
       ),
       status,
     );
   };
+
+  // Asking an agent for details or documents: anyone who reviews applications.
+  app.post('/agents/:id/ask', async (c) => {
+    if (!can.review(role(c))) return forbidden(c);
+    const list = asks.asksFrom(await formValues(c));
+    const result = await core(c.env).askAgent(uid(c), c.req.param('id'), list);
+    if (!result.ok) {
+      const code = /^invalid_(request|reason)$/.test(result.error) ? 'invalid_ask' : result.error;
+      return showAgent(c, errorText(code), 422);
+    }
+    return c.redirect(`/agents/${c.req.param('id')}?done=asked#requests`, 303);
+  });
+
+  app.post('/agents/:id/requests/:request/settle', async (c) => {
+    if (!can.review(role(c))) return forbidden(c);
+    const v = await formValues(c);
+    const result = await core(c.env).settleAgentRequest(
+      uid(c),
+      c.req.param('request'),
+      v.status ?? '',
+    );
+    if (!result.ok || result.value.agent_id !== c.req.param('id')) {
+      return showAgent(c, errorText(result.ok ? 'not_found' : result.error), 422);
+    }
+    return c.redirect(`/agents/${c.req.param('id')}?done=request_settled#requests`, 303);
+  });
+
+  app.post('/agents/:id/requests/:request/again', async (c) => {
+    if (!can.review(role(c))) return forbidden(c);
+    const v = await formValues(c);
+    const result = await core(c.env).askAgentAgain(uid(c), c.req.param('request'), v.note ?? '');
+    if (!result.ok) {
+      const code = result.error === 'invalid_reason' ? 'invalid_ask' : result.error;
+      return showAgent(c, errorText(code), 422);
+    }
+    return c.redirect(`/agents/${c.req.param('id')}?done=asked#requests`, 303);
+  });
+
+  // Erasing an agent's personal data: owner or admin, with a fresh second factor.
+  const showErase = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
+    const agent = unwrap(await core(c.env).agents(null)).find(
+      (a) => a.user_id === c.req.param('id'),
+    );
+    if (!agent || agent.erased_at) return notFound(c);
+    const [overview, settings] = await Promise.all([
+      core(c.env).erasureOverview(agent.user_id),
+      core(c.env).settings(),
+    ]);
+    const days = settings.ok ? settings.value.erasure_archive_days : 3650;
+    return c.html(
+      asks.erasePage(
+        nav(c),
+        agent,
+        unwrap(overview),
+        can.change(role(c)),
+        fresh(c),
+        Math.max(1, Math.round(days / 365)),
+        error,
+      ),
+      status,
+    );
+  };
+
+  app.get('/agents/:id/erase', (c) => showErase(c, null));
+
+  app.post('/agents/:id/erase', async (c) => {
+    const denied = sensitive(c, `/agents/${c.req.param('id')}/erase`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    if (!/^s[iİıI]l$/i.test(v.confirm ?? '')) return showErase(c, errorText('confirm_erase'), 422);
+    const result = await core(c.env).eraseAgent(uid(c), c.req.param('id'), {
+      reason: v.reason ?? '',
+    });
+    if (!result.ok) return showErase(c, errorText(result.error), 422);
+    return c.redirect(
+      result.value.archive_id
+        ? `/privacy/archive/${result.value.archive_id}?done=erased_agent`
+        : '/privacy/archive?done=erased_agent',
+      303,
+    );
+  });
+
+  app.post('/agents/:id/erase/refuse', async (c) => {
+    const denied = sensitive(c, `/agents/${c.req.param('id')}/erase`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const overview = await core(c.env).erasureOverview(c.req.param('id'));
+    const open =
+      overview.ok && overview.value.request?.status === 'open' ? overview.value.request : null;
+    if (!open) return showErase(c, errorText('not_found'), 422);
+    const result = await core(c.env).refuseErasure(uid(c), open.id, v.reason ?? '');
+    if (!result.ok) return showErase(c, errorText(result.error), 422);
+    return c.redirect('/privacy?done=erasure_refused#requests', 303);
+  });
 
   /** An applicant's e-Devlet document, to check against e-Devlet. Each opening is recorded. */
   app.get('/agents/:id/documents/:doc', async (c) => {
@@ -1266,6 +1379,97 @@ export function createApp(now: () => number) {
       return back(c, path === 'cases' ? 'redacted' : 'erased', v.q ?? '');
     });
   }
+
+  // ---- The sealed archive of erased data: owner or admin only -----------------------------------
+
+  app.use('/privacy/archive', async (c: AppContext, next) =>
+    can.change(role(c)) ? next() : forbidden(c),
+  );
+  app.use('/privacy/archive/*', async (c: AppContext, next) =>
+    can.change(role(c)) ? next() : forbidden(c),
+  );
+
+  app.get('/privacy/archive', async (c) => {
+    const term = c.req.query('q')?.trim() ?? '';
+    return c.html(
+      asks.archiveList(nav(c), unwrap(await core(c.env).archives(term)), term, done(c)),
+    );
+  });
+
+  const showArchive = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
+    const id = c.req.param('id') ?? '';
+    const entry = unwrap(await core(c.env).archives(id)).find((a) => a.id === id);
+    if (!entry) return notFound(c);
+    const views = await core(c.env).archiveViews(id);
+    return c.html(
+      asks.archiveDetail(nav(c), entry, views.ok ? views.value : [], fresh(c), error, done(c)),
+      status,
+    );
+  };
+
+  app.get('/privacy/archive/:id', (c) => showArchive(c, null));
+
+  const download = (body: BodyInit, type: string, name: string) =>
+    new Response(body, {
+      headers: {
+        'Content-Type': type,
+        'Content-Disposition': `attachment; filename="${name}"`,
+        'Cache-Control': 'private, no-store',
+        'Content-Security-Policy': 'sandbox',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+      },
+    });
+
+  /** The opened record as plain text. The reason is recorded by the core before anything is returned. */
+  app.post('/privacy/archive/:id/download', async (c) => {
+    const denied = sensitive(c, `/privacy/archive/${c.req.param('id')}`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const opened = await core(c.env).openArchive(uid(c), c.req.param('id'), v.reason ?? '');
+    if (!opened.ok) return showArchive(c, errorText(opened.error), 422);
+    const body = asks.archiveText(opened.value.entry, opened.value.payload, {
+      by: uid(c),
+      at: c.get('now'),
+      reason: (v.reason ?? '').trim(),
+    });
+    // A byte-order mark, so Windows editors read the Turkish letters.
+    return download(
+      `\uFEFF${body}`,
+      'text/plain; charset=utf-8',
+      `emanet-arsiv-${c.req.param('id').slice(0, 8)}.txt`,
+    );
+  });
+
+  app.post('/privacy/archive/:id/file', async (c) => {
+    const id = c.req.param('id');
+    const denied = sensitive(c, `/privacy/archive/${id}`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    const ref = v.ref ?? '';
+    // Only an object this archive lists is read from storage.
+    const listed = await core(c.env).archiveHasFile(id, ref);
+    if (!listed.ok || !listed.value || !ref.startsWith(`archive/${id}/`)) return notFound(c);
+    const object = await c.env.EVIDENCE.get(ref);
+    if (!object) return showArchive(c, errorText('not_found'), 422);
+    const opened = await core(c.env).openArchiveFile(
+      uid(c),
+      id,
+      ref,
+      v.reason ?? '',
+      await object.arrayBuffer(),
+    );
+    if (!opened.ok) return showArchive(c, errorText(opened.error), 422);
+    const ext =
+      opened.value.type === 'application/pdf'
+        ? 'pdf'
+        : (/^image\/(jpeg|png|webp|heic)$/.exec(opened.value.type)?.[1] ?? 'bin');
+    return download(
+      opened.value.bytes,
+      'application/octet-stream',
+      `emanet-arsiv-${id.slice(0, 8)}-${opened.value.name.replace(/[^a-z_]/g, '')}.${ext}`,
+    );
+  });
 
   app.post('/privacy/requests', async (c) => {
     const denied = changer(c);

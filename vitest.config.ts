@@ -60,7 +60,7 @@ const SPECS = {
   review_checklist: ['review', 'switch', 1, 0, 1],
   agent_sla_hours: ['agents', 'hours', 72, 1, 720], strike_limit: ['agents', 'count', 3, 0, 20],
   email_code_minutes: ['agents', 'minutes', 15, 5, 120], agent_mail: ['agents', 'switch', 1, 0, 1],
-  require_documents: ['agents', 'switch', 1, 0, 1],
+  require_documents: ['agents', 'switch', 1, 0, 1], agent_request_days: ['agents', 'days', 14, 1, 90],
   invitation_days: ['partners', 'days', 14, 1, 90], onboarding_sla_hours: ['partners', 'hours', 48, 1, 720],
   expiry_warning_days: ['partners', 'days', 3, 1, 30], webhook_disable_after: ['partners', 'count', 20, 3, 200],
   max_webhooks: ['partners', 'count', 5, 1, 20],
@@ -69,12 +69,27 @@ const SPECS = {
   withholding_individual_bp: ['money', 'bp', 0, 0, 5000], withholding_sole_trader_bp: ['money', 'bp', 0, 0, 5000],
   withholding_company_bp: ['money', 'bp', 0, 0, 5000],
   evidence_retention_days: ['privacy', 'days', 3650, 365, 7300], failed_claim_evidence_days: ['privacy', 'days', 30, 7, 365],
-  place_retention_days: ['privacy', 'days', 30, 1, 365], abandoned_onboarding_days: ['privacy', 'days', 90, 7, 365],
+  place_retention_days: ['privacy', 'days', 30, 1, 365], erasure_archive_days: ['privacy', 'days', 3650, 180, 3650], abandoned_onboarding_days: ['privacy', 'days', 90, 7, 365],
   privacy_request_days: ['privacy', 'days', 30, 1, 30],
   alert_interval_minutes: ['operations', 'minutes', 60, 15, 1440], ops_keep_days: ['operations', 'days', 30, 7, 365],
   require_signoffs: ['operations', 'switch', 1, 0, 1],
 };
 let s;
+function asksOf() {
+  return (s.asks ??= [
+    { id: 'ar-1', agent_id: 'agent-1', kind: 'info', subject: 'address', note: 'Adresinizde daire numarası eksik.', status: 'answered', answer: 'Düzelttim, No:4 D:2', document_id: null, created_at: now() - 86400, due_at: now() + 13 * 86400, answered_at: now() - 3600, closed_at: null },
+    { id: 'ar-2', agent_id: 'agent-1', kind: 'document', subject: 'bank_proof', note: 'IBAN dekontu yükleyin.', status: 'open', answer: null, document_id: null, created_at: now() - 20 * 86400, due_at: now() - 6 * 86400, answered_at: null, closed_at: null },
+    { id: 'ar-3', agent_id: 'agent-1', kind: 'info', subject: 'phone', note: 'Telefon numaranızı güncelleyin.', status: 'accepted', answer: null, document_id: null, created_at: now() - 30 * 86400, due_at: now() - 16 * 86400, answered_at: now() - 29 * 86400, closed_at: now() - 28 * 86400 },
+  ]);
+}
+function archivesOf() {
+  return (s.archives ??= [
+    { id: 'arch-1', subject_kind: 'agent', subject_ref: 'agent-0000-erased', request_id: 'pr-5', reason: 'İlgili kişinin talebi', archived_by: 'staff:admin-1', archived_at: now() - 86400, purge_at: now() + 3649 * 86400, purged_at: null,
+      files: [{ ref: 'archive/arch-1/f-1', name: 'population_record', type: 'application/pdf', size: 20480 }], files_pending: 1, views: 0, last_viewed_at: null },
+    { id: 'arch-0', subject_kind: 'agent', subject_ref: 'agent-0000-old', request_id: null, reason: 'account deleted', archived_by: 'system', archived_at: now() - 3700 * 86400, purge_at: now() - 50 * 86400, purged_at: now() - 50 * 86400,
+      files: [], files_pending: 0, views: 2, last_viewed_at: now() - 3000 * 86400 },
+  ]);
+}
 function seed() {
   const t = now();
   s = {
@@ -411,12 +426,110 @@ export class ControlApi extends WorkerEntrypoint {
   async privacyRequests() {
     return ok(s.requests ?? (s.requests = [
       { id: 'pr-1', kind: 'erasure', subject_kind: 'vehicle', subject_ref: '34ABC123', channel: 'KEP', note: null, received_at: now() - 40 * 86400, due_at: now() - 10 * 86400, status: 'open', outcome: null, closed_at: null },
+      { id: 'pr-5', kind: 'erasure', subject_kind: 'agent', subject_ref: 'agent-1', channel: 'saha', note: null, received_at: now() - 86400, due_at: now() + 29 * 86400, status: 'open', outcome: null, closed_at: null },
+      { id: 'pr-6', kind: 'erasure', subject_kind: 'agent', subject_ref: 'agent-9', channel: 'saha', note: null, received_at: now() - 86400, due_at: now() + 29 * 86400, status: 'withdrawn', outcome: null, closed_at: now() },
       { id: 'pr-2', kind: 'access', subject_kind: 'agent', subject_ref: 'ali@example.com', channel: 'Email', note: null, received_at: now() - 86400, due_at: now() + 29 * 86400, status: 'open', outcome: null, closed_at: null },
       { id: 'pr-3', kind: 'objection', subject_kind: 'contact', subject_ref: 'x@example.com', channel: 'Post', note: null, received_at: now() - 90 * 86400, due_at: now() - 60 * 86400, status: 'refused', outcome: 'Not a data subject', closed_at: now() - 70 * 86400 },
       { id: 'pr-4', kind: 'correction', subject_kind: 'other', subject_ref: 'y@example.com', channel: 'Email', note: null, received_at: now() - 90 * 86400, due_at: now() - 60 * 86400, status: 'done', outcome: 'Corrected', closed_at: now() - 80 * 86400 }]));
   }
   async openPrivacyRequest(staffId, input) { log('openPrivacyRequest', [staffId, input]); if (!input.subjectRef || !input.channel) return fail('invalid_request'); return ok({ id: 'pr-9', due_at: now() + 30 * 86400 }); }
   async closePrivacyRequest(staffId, id, input) { log('closePrivacyRequest', [staffId, id, input]); if (!input.outcome) return fail('invalid_request'); return ok(null); }
+  // ---- Requests to agents, erasure, the sealed archive ----
+  async agentRequests(id) { return ok(asksOf().filter((r) => r.agent_id === id)); }
+  async askAgent(staffId, id, asks) {
+    log('askAgent', [staffId, id, asks]);
+    if (asks.length === 0 || asks.some((a) => !a.kind || !a.subject)) return fail('invalid_request');
+    if (asks.some((a) => a.note.length < 5)) return fail('invalid_reason');
+    const agent = s.agents.find((a) => a.user_id === id);
+    if (!agent) return fail('not_found');
+    for (const a of asks) asksOf().push({ id: 'ar-' + (asksOf().length + 1), agent_id: id, kind: a.kind, subject: a.subject, note: a.note,
+      status: 'open', answer: null, document_id: null, created_at: now(), due_at: now() + 14 * 86400, answered_at: null, closed_at: null });
+    const returned = agent.status === 'kyc_pending';
+    if (returned) agent.status = 'applied';
+    return ok({ ids: ['ar-new'], returned });
+  }
+  async settleAgentRequest(staffId, requestId, status) {
+    log('settleAgentRequest', [staffId, requestId, status]);
+    const r = asksOf().find((x) => x.id === requestId);
+    if (!r) return fail('not_found');
+    if (status === 'accepted' && r.status !== 'answered') return fail('request_not_open');
+    r.status = status;
+    return ok({ agent_id: r.agent_id });
+  }
+  async askAgentAgain(staffId, requestId, note) {
+    log('askAgentAgain', [staffId, requestId, note]);
+    const r = asksOf().find((x) => x.id === requestId);
+    if (!r || r.status !== 'answered') return fail('request_not_open');
+    if (note.length < 5) return fail('invalid_reason');
+    r.status = 'open'; r.note = note;
+    return ok({ agent_id: r.agent_id, note });
+  }
+  async answeredRequests() {
+    return ok(asksOf().filter((r) => r.status === 'answered').map((r) => ({ id: r.id, agent_id: r.agent_id, legal_name: 'Ali Veli',
+      agent_status: 'applied', kind: r.kind, subject: r.subject, answered_at: r.answered_at })));
+  }
+  async erasureOverview(id) {
+    return ok({ request: id === 'agent-1' && !s.erasureClosed ? { id: 'pr-5', status: 'open', received_at: now() - 86400, due_at: now() + 29 * 86400, outcome: null, closed_at: null } : null,
+      blockers: { open_claims: 1, payouts_pending: s.payoutsPending ?? 0, payouts_sent: 2 } });
+  }
+  async eraseAgent(staffId, id, input) {
+    log('eraseAgent', [staffId, id, input]);
+    if ((s.payoutsPending ?? 0) > 0) return fail('payouts_pending');
+    if (!input.reason || input.reason.length < 3) return fail('invalid_reason');
+    const agent = s.agents.find((a) => a.user_id === id);
+    if (!agent) return fail('not_found');
+    Object.assign(agent, { status: 'banned', legal_name: null, phone: null, iban: null, email: null, city: null, erased_at: now() });
+    s.erasureClosed = true;
+    return ok({ archive_id: 'arch-1' });
+  }
+  async refuseErasure(staffId, requestId, reason) {
+    log('refuseErasure', [staffId, requestId, reason]);
+    if (reason.length < 10) return fail('invalid_reason');
+    s.erasureClosed = true;
+    return ok({ agent_id: 'agent-1', reason });
+  }
+  async archives(term = '') {
+    const list = archivesOf();
+    return ok(term ? list.filter((a) => a.id === term || a.subject_ref === term || term === 'ali@example.com') : list);
+  }
+  async archiveViews(id) { return ok((s.archiveViews ?? []).filter((v) => v.archive_id === id)); }
+  async openArchive(staffId, id, reason) {
+    log('openArchive', [staffId, id, reason]);
+    const entry = archivesOf().find((a) => a.id === id);
+    if (!entry) return fail('not_found');
+    if (entry.purged_at) return fail('archive_destroyed');
+    if (reason.trim().length < 10) return fail('invalid_reason');
+    (s.archiveViews ??= []).push({ archive_id: id, staff_id: staffId, what: 'record', reason: reason.trim(), viewed_at: now() });
+    return ok({ entry, payload: { subject: 'agent', account_id: entry.subject_ref, archived_at: entry.archived_at, reason: entry.reason,
+      profile: { legal_name: 'Ali Veli', id_number: '10000000146', phone: '+905321234567', email: 'ali@example.com', address: 'Örnek Mah. No:1\\nKadıköy', created_at: now() - 86400 * 90, strikes: 0, vkn: null },
+      identity_checks: [{ kind: 'id_registry', provider: 'nvi-kps', result: 'passed', created_at: now() - 86400 * 80 }],
+      documents: [{ kind: 'population_record', barcode: 'NVI-1', status: 'uploaded', uploaded_at: now() - 86400 * 80 }, { kind: 'criminal_record', barcode: 'ADL-1', status: 'verified', outcome: 'clear' }],
+      acceptances: [{ version: '2026-11-28', sha256: 'a'.repeat(64), locale: 'tr', accepted_at: now() - 86400 * 85 }],
+      requests: [], privacy_requests: [{ id: 'pr-5', kind: 'erasure', status: 'done' }] } });
+  }
+  async archiveHasFile(id, ref) { return ok(archivesOf().some((a) => a.id === id && a.files.some((f) => f.ref === ref))); }
+  async openArchiveFile(staffId, id, ref, reason, bytes) {
+    log('openArchiveFile', [staffId, id, ref, reason, bytes.byteLength]);
+    if (reason.trim().length < 10) return fail('invalid_reason');
+    // The stand-in "seal" is a one-byte prefix.
+    return ok({ name: 'population_record', type: 'application/pdf', bytes: new Uint8Array(bytes).slice(1) });
+  }
+  async archiveFilesDue() { return ok(s.archiveDue ?? []); }
+  async sealArchiveFile(archiveId, fileRef, bytes) {
+    log('sealArchiveFile', [archiveId, fileRef, bytes.byteLength]);
+    if (fileRef.includes('refused')) return fail('not_found');
+    const out = new Uint8Array(bytes.byteLength + 1); out[0] = 0x45; out.set(new Uint8Array(bytes), 1);
+    return ok(out);
+  }
+  async archiveFileStored(archiveId, fileRef, stored) {
+    log('archiveFileStored', [archiveId, fileRef, stored.type, stored.size]);
+    s.archiveDue = (s.archiveDue ?? []).filter((f) => f.file_ref !== fileRef);
+    (s.archiveStored ??= []).push(stored.ref);
+    return ok(null);
+  }
+  async testArchiveDue(files) { s.archiveDue = files; }
+  async testArchiveStored() { return s.archiveStored ?? []; }
+  async testPayoutsPending(n) { s.payoutsPending = n; }
   async filesDue() { return ok(s.due ?? [{ file_ref: 'claims/cl-1/e-9', bucket: 'evidence' }, { file_ref: 'onboarding/ob-1/d-9', bucket: 'documents' }]); }
   async filesErased(refs) { log('filesErased', [refs]); s.due = []; return ok({ erased: refs.length }); }
   async ops() {

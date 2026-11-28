@@ -117,6 +117,10 @@ export interface AgentRow {
   /** What staff asked the applicant to correct, while the application is back with them. */
   review_note?: string | null;
   address?: string | null;
+  /** When the person's data was erased; nothing can be done with the account after. */
+  erased_at?: number | null;
+  requests_open?: number;
+  requests_answered?: number;
 }
 
 export interface PayoutRow {
@@ -300,7 +304,7 @@ export interface PrivacyRequest {
   note: string | null;
   received_at: number;
   due_at: number;
-  status: 'open' | 'done' | 'refused';
+  status: 'open' | 'done' | 'refused' | 'withdrawn';
   outcome: string | null;
   closed_at: number | null;
 }
@@ -363,7 +367,14 @@ export interface SettingInfo {
 
 export interface AgentDocument {
   id: string;
-  kind: 'criminal_record' | 'population_record';
+  kind:
+    | 'criminal_record'
+    | 'population_record'
+    | 'residence_record'
+    | 'driving_licence'
+    | 'tax_certificate'
+    | 'bank_proof'
+    | 'other';
   barcode: string;
   uploaded_at: number;
   status: 'uploaded' | 'verified' | 'rejected';
@@ -371,6 +382,83 @@ export interface AgentDocument {
   decided_at: number | null;
   note: string | null;
   file_ref: string | null;
+  /** The request this document answers, if staff asked for it. */
+  request_id?: string | null;
+}
+
+/** One thing staff asked an agent for. */
+export interface AgentRequest {
+  id: string;
+  agent_id: string;
+  kind: 'info' | 'document';
+  subject: string;
+  note: string;
+  status: 'open' | 'answered' | 'accepted' | 'cancelled';
+  answer: string | null;
+  document_id: string | null;
+  created_at: number;
+  due_at: number;
+  answered_at: number | null;
+  closed_at: number | null;
+}
+export interface AnsweredRequest {
+  id: string;
+  agent_id: string;
+  legal_name: string | null;
+  agent_status: string;
+  kind: 'info' | 'document';
+  subject: string;
+  answered_at: number;
+}
+export interface ErasureOverview {
+  request: {
+    id: string;
+    status: 'open' | 'done' | 'refused' | 'withdrawn';
+    received_at: number;
+    due_at: number;
+    outcome: string | null;
+    closed_at: number | null;
+  } | null;
+  blockers: { open_claims: number; payouts_pending: number; payouts_sent: number };
+}
+export interface ArchiveFile {
+  ref: string;
+  name: string;
+  type: string;
+  size: number;
+}
+export interface ArchiveEntry {
+  id: string;
+  subject_kind: 'agent';
+  subject_ref: string;
+  request_id: string | null;
+  reason: string;
+  archived_by: string;
+  archived_at: number;
+  purge_at: number;
+  purged_at: number | null;
+  files: ArchiveFile[];
+  files_pending: number;
+  views: number;
+  last_viewed_at: number | null;
+}
+export interface ArchiveView {
+  staff_id: string;
+  what: string;
+  reason: string;
+  viewed_at: number;
+}
+export interface ArchivePayload {
+  subject: 'agent';
+  account_id: string;
+  archived_at: number;
+  reason: string;
+  profile: Record<string, unknown>;
+  identity_checks: Record<string, unknown>[];
+  documents: Record<string, unknown>[];
+  acceptances: Record<string, unknown>[];
+  requests: Record<string, unknown>[];
+  privacy_requests: Record<string, unknown>[];
 }
 export interface Acceptance {
   version: string;
@@ -748,6 +836,63 @@ export interface ControlApi {
     limit?: number,
   ): Promise<Result<{ file_ref: string; bucket: 'evidence' | 'documents' }[]>>;
   filesErased(refs: string[]): Promise<Result<{ erased: number }>>;
+  /** Files to seal into an archive and move, never to delete outright. */
+  archiveFilesDue(
+    limit?: number,
+  ): Promise<Result<{ file_ref: string; bucket: 'evidence' | 'documents'; archive_id: string }[]>>;
+  sealArchiveFile(
+    archiveId: string,
+    fileRef: string,
+    bytes: ArrayBuffer,
+  ): Promise<Result<Uint8Array>>;
+  archiveFileStored(
+    archiveId: string,
+    fileRef: string,
+    stored: { ref: string; type: string; size: number },
+  ): Promise<Result<null>>;
+  askAgent(
+    staffId: string,
+    agentId: string,
+    asks: { kind: string; subject: string; note: string }[],
+  ): Promise<Result<{ ids: string[]; returned: boolean }>>;
+  agentRequests(agentId: string): Promise<Result<AgentRequest[]>>;
+  settleAgentRequest(
+    staffId: string,
+    requestId: string,
+    status: string,
+  ): Promise<Result<{ agent_id: string }>>;
+  askAgentAgain(
+    staffId: string,
+    requestId: string,
+    note: string,
+  ): Promise<Result<{ agent_id: string }>>;
+  answeredRequests(): Promise<Result<AnsweredRequest[]>>;
+  erasureOverview(agentId: string): Promise<Result<ErasureOverview>>;
+  eraseAgent(
+    staffId: string,
+    agentId: string,
+    input: { reason: string; requestId?: string },
+  ): Promise<Result<{ archive_id: string | null }>>;
+  refuseErasure(
+    staffId: string,
+    requestId: string,
+    reason: string,
+  ): Promise<Result<{ agent_id: string }>>;
+  archives(term?: string): Promise<Result<ArchiveEntry[]>>;
+  archiveViews(archiveId: string): Promise<Result<ArchiveView[]>>;
+  openArchive(
+    staffId: string,
+    archiveId: string,
+    reason: string,
+  ): Promise<Result<{ entry: ArchiveEntry; payload: ArchivePayload }>>;
+  archiveHasFile(archiveId: string, ref: string): Promise<Result<boolean>>;
+  openArchiveFile(
+    staffId: string,
+    archiveId: string,
+    ref: string,
+    reason: string,
+    bytes: ArrayBuffer,
+  ): Promise<Result<{ name: string; type: string; bytes: Uint8Array }>>;
   ops(): Promise<Result<OpsOverview>>;
   /** The work waiting for staff, each queue against its service level. */
   queues(): Promise<Result<Queue[]>>;

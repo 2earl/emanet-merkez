@@ -13,6 +13,7 @@ import type {
   ReadinessCheck,
 } from './core';
 import { icon, scene, type IconName } from './icons';
+import { DOCUMENT_NAME } from './pages-requests';
 import {
   L,
   attr,
@@ -29,10 +30,8 @@ import {
 
 // ---- An applicant's documents and acceptance --------------------------------------------------------
 
-const DOC_NAME: Record<AgentDocument['kind'], [string, string]> = {
-  criminal_record: ['Criminal record (adli sicil kaydı)', 'Adli sicil kaydı'],
-  population_record: ['Population register extract (nüfus kayıt örneği)', 'Nüfus kayıt örneği'],
-};
+const DOC_NAME: Record<string, [string, string]> = DOCUMENT_NAME;
+const E_DEVLET: readonly string[] = ['criminal_record', 'population_record', 'residence_record'];
 
 const OUTCOME: Record<string, [string, string, string]> = {
   clear: ['Clear', 'Temiz', 'active'],
@@ -63,9 +62,10 @@ export function vettingPanel(
       )} ${moment(accepted.accepted_at)}</span></p>
        <p class="hint">${esc(L('Digest of the accepted text:', 'Onaylanan metnin özeti:'))} <code>${esc(accepted.sha256.slice(0, 16))}…</code></p>`
     : `<p class="hint">${esc(L('Nothing accepted yet: the application hasn’t been sent with the current agreement.', 'Henüz onay yok: başvuru güncel sözleşmeyle gönderilmedi.'))}</p>`;
-  const one = (kind: AgentDocument['kind']) => {
-    const doc = documents.find((d) => d.kind === kind);
-    const name = L(...DOC_NAME[kind]);
+  const one = (kind: AgentDocument['kind'], given?: AgentDocument) => {
+    const doc = given ?? documents.find((d) => d.kind === kind);
+    const name = L(...(DOC_NAME[kind] ?? [kind, kind]));
+    const barcoded = E_DEVLET.includes(kind);
     if (!doc) {
       return `<li><div class="doc-head"><strong>${icon('file')}${esc(name)}</strong><span class="status pending">${esc(L('Not uploaded', 'Yüklenmedi'))}</span></div></li>`;
     }
@@ -81,17 +81,24 @@ export function vettingPanel(
       doc.status === 'uploaded' && doc.file_ref
         ? `<div class="doc-work">
              <p><a class="button secondary" href="${path}/documents/${attr(doc.id)}" target="_blank" rel="noopener">${icon('file')}<span>${esc(L('Open the document', 'Belgeyi aç'))}</span></a>
-               <span class="barcode">${esc(L('Barcode', 'Barkod'))}: <code>${esc(doc.barcode)}</code></span></p>
-             <ol class="steps">
+               ${doc.barcode ? `<span class="barcode">${esc(L('Barcode', 'Barkod'))}: <code>${esc(doc.barcode)}</code></span>` : ''}</p>
+             ${
+               barcoded
+                 ? `<ol class="steps">
                <li>${L('Phone: open the <strong>e-Devlet</strong> app → <strong>Barkodlu Belge Doğrulama</strong> → scan the QR code on the opened document.', 'Telefon: <strong>e-Devlet</strong> uygulaması → <strong>Barkodlu Belge Doğrulama</strong> → açtığınız belgedeki karekodu okutun.')}</li>
                <li>${L('Or computer: <a href="https://www.turkiye.gov.tr/belge-dogrulama" target="_blank" rel="noopener noreferrer">turkiye.gov.tr/belge-dogrulama</a> → enter the barcode number above (and the ID number, if asked: get it from the applicant on the call).', 'Ya da bilgisayar: <a href="https://www.turkiye.gov.tr/belge-dogrulama" target="_blank" rel="noopener noreferrer">turkiye.gov.tr/belge-dogrulama</a> → yukarıdaki barkod numarasını girin (istenirse kimlik numarasını görüşmede başvurandan alın).')}</li>
                <li>${esc(L(`Compare what e-Devlet shows with the upload: the name is “${agent.legal_name ?? '—'}”, the document is a ${name}, issued in the last 30 days, and the content is identical.`, `e-Devlet’in gösterdiğini yüklenenle karşılaştırın: ad “${agent.legal_name ?? '—'}”, belge türü ${name}, son 30 gün içinde verilmiş ve içerik birebir aynı.`))}</li>
-             </ol>
+             </ol>`
+                 : `<ol class="steps">
+               <li>${esc(L(`Open the document and read it against this page: the name is “${agent.legal_name ?? '—'}”, and it shows what you asked for.`, `Belgeyi açın ve bu sayfayla karşılaştırın: ad “${agent.legal_name ?? '—'}” ve istediğiniz şeyi gösteriyor.`))}</li>
+               <li>${esc(kind === 'bank_proof' ? L(`The IBAN on it is the one on this page, letter for letter, and the account holder is this person. Then mark the IBAN verified below.`, `Üzerindeki IBAN bu sayfadakiyle harfi harfine aynı ve hesap sahibi bu kişi. Ardından aşağıda IBAN’ı doğrulanmış olarak işaretleyin.`) : kind === 'tax_certificate' ? L('The tax number on it is the one on this page; you can check a vergi levhası by its code at ivd.gib.gov.tr.', 'Üzerindeki vergi numarası bu sayfadakiyle aynı; vergi levhasını ivd.gib.gov.tr’de kodu ile doğrulayabilirsiniz.') : L('It is readable, complete and not visibly altered. If in doubt, ask to see the original on the video call.', 'Okunaklı, eksiksiz ve gözle görülür bir değişiklik yok. Şüphe varsa aslını görüntülü görüşmede isteyin.'))}</li>
+             </ol>`
+             }
              ${
                act
                  ? `<form method="post" action="${path}/documents/${attr(doc.id)}/decide" class="stack">
                       <div class="grid2">
-                        <label>${esc(L('What e-Devlet showed', 'e-Devlet ne gösterdi'))} <select name="outcome" required>
+                        <label>${esc(barcoded ? L('What e-Devlet showed', 'e-Devlet ne gösterdi') : L('What you found', 'Ne buldunuz'))} <select name="outcome" required>
                           <option value="">${esc(L('Choose', 'Seçin'))}</option>
                           <option value="clear">${esc(L('Clear: valid, this person, nothing against them', 'Temiz: geçerli, bu kişiye ait, engel yok'))}</option>
                           ${kind === 'criminal_record' ? `<option value="has_record">${esc(L('Has a record', 'Kaydı var'))}</option>` : ''}
@@ -100,7 +107,7 @@ export function vettingPanel(
                         </select></label>
                         <label>${esc(L('Reason (needed unless clear)', 'Gerekçe (temiz değilse zorunlu)'))} <input name="note" maxlength="200"></label>
                       </div>
-                      <p class="hint">${esc(L('Never write what a criminal record says. With your decision the file is deleted; only the outcome stays.', 'Adli sicil kaydında ne yazdığını asla not etmeyin. Kararınızla birlikte dosya silinir; yalnızca sonuç kalır.'))}</p>
+                      <p class="hint">${esc(kind === 'criminal_record' ? L('Never write what a criminal record says. With your decision the file is deleted; only the outcome stays.', 'Adli sicil kaydında ne yazdığını asla not etmeyin. Kararınızla birlikte dosya silinir; yalnızca sonuç kalır.') : L('With your decision the file is deleted; only the outcome stays.', 'Kararınızla birlikte dosya silinir; yalnızca sonuç kalır.'))}</p>
                       <div><button type="submit">${esc(L('Record the result', 'Sonucu kaydet'))}</button></div>
                     </form>`
                  : ''
@@ -112,7 +119,10 @@ export function vettingPanel(
   return `<section class="vetting" translate="no">
       <h2>${esc(L('Agreement and documents', 'Sözleşme ve belgeler'))}</h2>
       ${acceptance}
-      <ul class="docs-list">${one('criminal_record')}${one('population_record')}</ul>
+      <ul class="docs-list">${one('criminal_record')}${one('population_record')}${documents
+        .filter((d) => d.kind !== 'criminal_record' && d.kind !== 'population_record')
+        .map((d) => one(d.kind, d))
+        .join('')}</ul>
       <p class="hint"><a href="/guide/documents">${esc(L('How to verify an e-Devlet document, step by step', 'e-Devlet belgesi adım adım nasıl doğrulanır'))}</a></p>
     </section>`;
 }

@@ -130,6 +130,37 @@ describe('Turkish', () => {
     await send('/money/invoices/i-1/number', admin, { number: '!' });
     await send('/money/invoices/i-1/number', admin, { number: 'EMA2026000000009' });
     await get('/money', admin);
+    // Requests to an agent, erasure, the sealed archive.
+    await send('/agents/agent-1/ask', admin, {});
+    await send('/agents/agent-1/ask', admin, { what1: 'info:address', note1: 'x' });
+    await send('/agents/agent-1/requests/ar-2/settle', admin, { status: 'accepted' });
+    await send('/agents/agent-1/requests/ar-2/again', admin, { note: 'Yeniden yükleyin' });
+    await send('/agents/agent-1/requests/ar-1/again', admin, { note: 'x' });
+    for (const done of ['asked', 'request_settled'])
+      await get(`/agents/agent-1?done=${done}`, admin);
+    await get('/agents/agent-1/erase', admin);
+    await get('/agents/agent-1/erase', old);
+    await get('/agents/agent-1/erase', support);
+    await send('/agents/agent-1/erase', admin, { reason: 'x', confirm: 'no' });
+    await coreHooks().testPayoutsPending(2);
+    await get('/agents/agent-1/erase', admin);
+    await send('/agents/agent-1/erase', admin, { reason: 'talep', confirm: 'SİL' });
+    await coreHooks().testPayoutsPending(0);
+    await send('/agents/agent-1/erase/refuse', admin, { reason: 'x' });
+    await get('/privacy/archive', admin);
+    await get('/privacy/archive?q=nobody', admin);
+    await get('/privacy/archive?done=erased_agent', admin);
+    await get('/privacy/archive', support);
+    await get('/privacy/archive/arch-1', admin);
+    await get('/privacy/archive/arch-1', old);
+    await get('/privacy/archive/arch-0', admin);
+    await send('/privacy/archive/arch-1/download', admin, { reason: 'x' });
+    await send('/privacy/archive/arch-0/download', admin, { reason: 'Mahkeme yazısı 2027/1' });
+    await get('/privacy?done=erasure_refused', admin);
+    await get('/guide/requests', admin);
+    await get('/guide/erasure', admin);
+    await get('/', admin);
+
     await send('/agents/agent-1/status', admin, { status: 'active', reason: 'x' });
     await send('/partners/p-1', admin, { legal_name: 'X', vkn: '1', reconfirm_days: '14' });
     await send('/partners/p-1', admin, { legal_name: 'X', vkn: '', reconfirm_days: '500' });

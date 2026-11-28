@@ -2740,3 +2740,143 @@ ul.checks-list {
   height: 0.95rem;
   color: var(--good);
 }
+
+/* ---- Requests to an agent, erasure, the sealed archive --------------------------------------------- */
+
+.ask-item p.asked,
+.ask-item p.answered {
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.8rem;
+  border-left: 3px solid var(--rule);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--sunken, var(--ground));
+}
+
+.ask-item p.answered {
+  border-left-color: var(--action);
+  background: var(--tint);
+}
+
+.ask-item .hint {
+  display: block;
+  margin-bottom: 0.1rem;
+}
+
+.ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem 1rem;
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed var(--rule);
+}
+
+.ask-actions form.inline {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.ask-actions form.inline label {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.ask-actions > .hint {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+details.ask-form {
+  margin: 1rem 0;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+details.ask-form > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
+  font-weight: 600;
+  color: var(--action);
+  cursor: pointer;
+  list-style: none;
+}
+
+details.ask-form > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.ask-form > form {
+  padding: 0 1rem 1rem;
+}
+
+fieldset.ask-row,
+form.ask-row {
+  margin: 0 0 0.8rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+fieldset.ask-row legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+details.history {
+  margin: 1rem 0;
+}
+
+ul.plain-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+ul.plain-list li {
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+form.danger-zone {
+  padding: 1rem 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--rule));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--danger) 4%, var(--paper));
+}
+
+form.danger-zone h2 {
+  margin-top: 0;
+}
+
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.panel h2 > .icon {
+  vertical-align: -0.15em;
+  margin-right: 0.4rem;
+}
+
+form.panel.stack {
+  max-width: none;
+  margin-bottom: 1rem;
+}
+
+.ask-actions form.inline label {
+  text-align: left;
+}
