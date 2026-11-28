@@ -59,6 +59,14 @@ describe('Turkish', () => {
         '/money?partner=p-1',
         '/money/ledger',
         '/settings',
+        '/readiness',
+        '/search?q=ali',
+        '/search?q=zz',
+        '/money/accounting',
+        '/money/accounting?month=2026-10',
+        '/guide/documents',
+        '/guide/readiness',
+        '/guide/accounting',
         '/guide',
         '/guide/overview',
         '/guide/settings',
@@ -85,6 +93,13 @@ describe('Turkish', () => {
       await get(`/money?done=${done}`, admin);
     await get('/settings?done=saved', admin);
     await get('/settings?done=reset', admin);
+    for (const done of ['signed', 'unsigned']) await get(`/readiness?done=${done}`, admin);
+    await send('/readiness/legal_privacy', admin, { signer: 'x' });
+    await send('/agents/agent-1/documents/doc-2/decide', admin, { outcome: 'x' });
+    await send('/agents/agent-1/documents/doc-2/decide', admin, { outcome: 'mismatch' });
+    await get('/agents/agent-1?done=document_decided', admin);
+    await send('/money/accounting/2026-11/close', admin);
+    await get('/money/accounting?month=2026-10&done=month_closed', admin);
     await send('/settings', admin, { strike_limit: '99' });
     await send('/settings/reset', admin, { key: 'nope' });
     await send('/reviews/r-del/deliver', admin, { check_plate_matches: '1' });

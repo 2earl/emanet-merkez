@@ -60,6 +60,7 @@ const SPECS = {
   review_checklist: ['review', 'switch', 1, 0, 1],
   agent_sla_hours: ['agents', 'hours', 72, 1, 720], strike_limit: ['agents', 'count', 3, 0, 20],
   email_code_minutes: ['agents', 'minutes', 15, 5, 120], agent_mail: ['agents', 'switch', 1, 0, 1],
+  require_documents: ['agents', 'switch', 1, 0, 1],
   invitation_days: ['partners', 'days', 14, 1, 90], onboarding_sla_hours: ['partners', 'hours', 48, 1, 720],
   expiry_warning_days: ['partners', 'days', 3, 1, 30], webhook_disable_after: ['partners', 'count', 20, 3, 200],
   max_webhooks: ['partners', 'count', 5, 1, 20],
@@ -71,6 +72,7 @@ const SPECS = {
   place_retention_days: ['privacy', 'days', 30, 1, 365], abandoned_onboarding_days: ['privacy', 'days', 90, 7, 365],
   privacy_request_days: ['privacy', 'days', 30, 1, 30],
   alert_interval_minutes: ['operations', 'minutes', 60, 15, 1440], ops_keep_days: ['operations', 'days', 30, 7, 365],
+  require_signoffs: ['operations', 'switch', 1, 0, 1],
 };
 let s;
 function seed() {
@@ -86,6 +88,11 @@ function seed() {
       label_en: 'Portfolio', type: 'enum', enum_values: '["A","B"]', required: 0, visibility: 'partner', deprecated_at: null }],
     settings: Object.fromEntries(Object.entries(SPECS).map(([key, spec]) => [key, spec[2]])),
     settingsChanged: {},
+    signoffs: {},
+    documents: [
+      { id: 'doc-1', agent_id: 'agent-1', kind: 'criminal_record', barcode: 'ABC-123456', uploaded_at: t, status: 'uploaded', outcome: null, decided_at: null, note: null, file_ref: 'agents/agent-1/criminal_record-1' },
+      { id: 'doc-2', agent_id: 'agent-1', kind: 'population_record', barcode: 'NVI-987654', uploaded_at: t, status: 'uploaded', outcome: null, decided_at: null, note: null, file_ref: 'agents/agent-1/population_record-1' },
+    ],
     rule: { rule: { share_bp: 5000 }, valid_from: t - 86400 },
     agents: [{ user_id: 'agent-1', status: 'kyc_pending', legal_name: 'Ali Veli', city: 'İstanbul',
       phone: '+905321234567', iban: 'TR330006100519786457841326', tax_profile: 'individual', vkn: null,
@@ -233,6 +240,61 @@ export class ControlApi extends WorkerEntrypoint {
       { key: 'invoicing', open: 3, oldest_at: t - 6 * 86400, overdue: 0, due_soon: 3, limit_seconds: 604800 },
     ]);
   }
+  async agentDocuments(id) { return ok(s.documents.filter((d) => d.agent_id === id)); }
+  async agentAcceptance(id) {
+    return ok(id === 'agent-1' ? { version: '2026-11-28-taslak', sha256: 'ab'.repeat(32), locale: 'tr', accepted_at: now() - 3600, current: true } : null);
+  }
+  async documentFile(staffId, docId) {
+    log('documentFile', [staffId, docId]);
+    const d = s.documents.find((x) => x.id === docId && x.status === 'uploaded');
+    return d ? ok({ file_ref: d.file_ref, agent_id: d.agent_id, kind: d.kind }) : fail('not_found');
+  }
+  async decideDocument(staffId, docId, input) {
+    log('decideDocument', [staffId, docId, input]);
+    const d = s.documents.find((x) => x.id === docId);
+    if (!d) return fail('not_found');
+    if (!['clear', 'has_record', 'mismatch', 'invalid'].includes(input.outcome)) return fail('invalid_outcome');
+    if (input.outcome !== 'clear' && !input.note) return fail('invalid_reason');
+    if (d.status !== 'uploaded') return fail('already_decided');
+    Object.assign(d, { status: input.outcome === 'clear' ? 'verified' : 'rejected', outcome: input.outcome, decided_at: now(), note: input.note ?? null, file_ref: null });
+    return ok({ agent_id: d.agent_id });
+  }
+  async readiness() {
+    const need = { legal_service_agreement: 'lawyer', legal_agent_agreement: 'lawyer', legal_privacy: 'lawyer', accounting_setup: 'accountant' };
+    const signs = Object.entries(need).map(([key, by]) => {
+      const row = s.signoffs[key];
+      return { key, kind: 'signoff', by, version: 'v1', ok: Boolean(row), signer: row?.signer ?? null, signed_at: row ? now() : null, signed_version: row ? 'v1' : null, note: row?.note ?? null };
+    });
+    const all = signs.every((c) => c.ok);
+    return ok({ checks: [
+      { key: 'company_details', kind: 'auto', ok: true }, { key: 'payout_rule', kind: 'auto', ok: true },
+      { key: 'encryption_key', kind: 'auto', ok: true }, { key: 'service_agreement_final', kind: 'auto', ok: false },
+      { key: 'agent_agreement_final', kind: 'auto', ok: false }, ...signs,
+    ], partners_ready: all, agents_ready: all, enforced: true });
+  }
+  async signOff(staffId, key, input) {
+    log('signOff', [staffId, key, input]);
+    if (!input.signer || input.signer.length < 3) return fail('invalid_signer');
+    s.signoffs[key] = input;
+    return ok(null);
+  }
+  async withdrawSignoff(staffId, key) { log('withdrawSignoff', [staffId, key]); delete s.signoffs[key]; return ok(null); }
+  async accountingMonths() { return ok([{ month: '2026-11', entries: 4, closed: false }, { month: '2026-10', entries: 2, closed: true }]); }
+  async accountingMonth(staffId, month) {
+    log('accountingMonth', [staffId, month]);
+    if (!/^\\d{4}-\\d{2}$/.test(month)) return fail('invalid_month');
+    const t = now();
+    return ok({ month, closed: month === '2026-10' ? { by: 'admin-1', at: t } : null,
+      invoices: [{ id: 'i-1', number: 'EMA2026000000001', issued_at: t, partner: 'Test Bankası A.Ş.', vkn: '1234567890', tax_office: 'Kadıköy', net_kurus: 1000000, kdv_kurus: 200000, total_kurus: 1200000, status: 'issued', cases: 1 }],
+      receipts: [{ id: 'r-1', value_date: '2026-11-20', partner: 'Test Bankası A.Ş.', amount_kurus: 1200000, bank_ref: 'REF;1', invoice_number: 'EMA2026000000001' }],
+      payouts: [{ id: 'po-1', paid_at: t, agent_id: 'agent-1', name: 'Ali Veli', tckn: '10000000146', address: 'Örnek Mah. No:1 "A" Blok', tax_profile: 'individual', vkn: null, iban: 'TR330006100519786457841326', gross_kurus: 500000, withholding_kurus: 50000, net_kurus: 450000, bank_ref: '=cmd' }],
+      journal: [{ entry_id: 'e-1', occurred_at: t, kind: 'invoice', memo: 'Fatura', ref_id: 'i-1', account_code: '120', account_name: 'Alıcılar', debit_kurus: 1200000, credit_kurus: 0 },
+        { entry_id: 'e-1', occurred_at: t, kind: 'invoice', memo: 'Fatura', ref_id: 'i-1', account_code: '600', account_name: 'Yurt İçi Satışlar', debit_kurus: 0, credit_kurus: 1200000 }],
+      totals: { invoiced_net: 1000000, invoiced_kdv: 200000, received: 1200000, paid_gross: 500000, withheld: 50000, paid_net: 450000, debit: 1200000, credit: 1200000 },
+      withholding: [{ tax_profile: 'individual', payouts: 1, gross_kurus: 500000, withheld_kurus: 50000 }],
+      incomplete: [{ agent_id: 'agent-2', name: null, missing: ['name', 'address'] }] });
+  }
+  async closeMonth(staffId, month) { log('closeMonth', [staffId, month]); return month >= '2026-11' ? fail('month_not_over') : ok(null); }
   async returnApplication(staffId, id, reason) {
     log('returnApplication', [staffId, id, reason]);
     const a = s.agents.find((x) => x.user_id === id);

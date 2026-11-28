@@ -18,6 +18,20 @@ export const tr: Catalog = {
   ],
   monthsShort: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
   messages: {
+    Readiness: 'Hazırlık',
+    Accounting: 'Muhasebe',
+    'Both e-Devlet documents must be verified as clear first.':
+      'Önce iki e-Devlet belgesi de doğrulanıp temiz bulunmalı.',
+    'Not yet: the sign-offs on the Readiness page are missing.':
+      'Henüz değil: Hazırlık sayfasındaki onaylar eksik.',
+    'Enter who confirmed it.': 'Kimin onayladığını girin.',
+    'Choose what e-Devlet showed.': 'e-Devlet’in ne gösterdiğini seçin.',
+    'This document was decided already.': 'Bu belge hakkında zaten karar verilmiş.',
+    'That month isn’t over yet.': 'O ay henüz bitmedi.',
+    'Result recorded. The file is being deleted.': 'Sonuç kaydedildi. Dosya siliniyor.',
+    'Sign-off recorded.': 'Onay kaydedildi.',
+    'Sign-off withdrawn.': 'Onay geri alındı.',
+    'Marked as handed to the accountant.': 'Mali müşavire teslim edildi olarak işaretlendi.',
     Work: 'İş',
     Records: 'Kayıtlar',
     Control: 'Denetim ve ayar',

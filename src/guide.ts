@@ -235,10 +235,10 @@ ${note('While a delivery is under review, the active cases on that vehicle can�
     body: (l) =>
       l === 'tr'
         ? `<h2>Katılım</h2>
-${flow(['E-posta kodu', 'Kimlik ve banka bilgileri', 'Kurallar', 'Başvuru gönderilir', 'Görüntülü görüşme', 'Karar'])}
+${flow(['E-posta kodu', 'Kimlik ve banka bilgileri', 'e-Devlet belgeleri', 'Sözleşme ve rızalar', 'Belge doğrulama', 'Görüntülü görüşme', 'Karar'])}
 <ol>
 <li><strong>E-posta.</strong> Başvuran, adresine gelen altı haneli kodla adresini doğrular (kod {{email_code_minutes}} geçerlidir).</li>
-<li><strong>Kimlik.</strong> Ad soyad, T.C. kimlik numarası, doğum yılı, cep telefonu, IBAN. Numara önce hane kontrolünden, sonra (yanıt verirse) nüfus kayıt sorgusundan geçer. Numaranın kendisi saklanmaz; yalnızca anahtarlı özeti tutulur. E-posta, telefon ve kimlik numarası her biri tek hesapta bulunabilir.</li>
+<li><strong>Kimlik.</strong> Ad soyad, T.C. kimlik numarası, doğum yılı, cep telefonu, IBAN. Numara önce hane kontrolünden, sonra (yanıt verirse) nüfus kayıt sorgusundan geçer. Numara şifreli saklanır (yalnızca ödeme belgeleri için) ve ayrıca anahtarlı özeti tutulur. E-posta, telefon ve kimlik numarası her biri tek hesapta bulunabilir.</li>
 <li><strong>Kurallar.</strong> Başvuran saha kurallarını okur ve kabul eder.</li>
 <li><strong>Görüntülü görüşme.</strong> Merkez {{agent_sla_hours}} içinde arar: kişi kimlik kartını gösterir, IBAN’ın kendisine ait olduğu doğrulanır. Sonuç görevlinin sayfasına işlenir.</li>
 <li><strong>Karar.</strong> Etkinleştir, <em>düzeltme için geri gönder</em> (başvuran notu okur, düzeltir, yeniden gönderir) ya da reddet. Etkinleştirme, doğrulanmış e-posta ve kayıtlı kimlik numarası olmadan yapılamaz ve son 15 dakikada ikinci doğrulama ister.</li>
@@ -257,10 +257,10 @@ ${flow(['Üstlenir', 'Arar', 'Görür: fotoğraf + konum', '112’yi arar', 'Kol
 <h2>Görevliye bildirimler</h2>
 <p>Her karar görevlinin doğruladığı adrese, başvuru dilinde e-postayla gider: başvuru alındı, onaylandı, geri gönderildi; teslim onaylandı veya onaylanmadı (gerekçesiyle); ödeme gönderildi; hesap askıya alındı, kapatıldı, yeniden açıldı.</p>`
         : `<h2>Joining</h2>
-${flow(['Email code', 'Identity and bank details', 'Rules', 'Application sent', 'Video call', 'Decision'])}
+${flow(['Email code', 'Identity and bank details', 'e-Devlet documents', 'Agreement and consents', 'Documents verified', 'Video call', 'Decision'])}
 <ol>
 <li><strong>Email.</strong> The applicant proves the address with a six-digit code (valid for {{email_code_minutes}}).</li>
-<li><strong>Identity.</strong> Full name, T.C. kimlik no, birth year, mobile number, IBAN. The number is checked by its digits and then, when the service answers, against the population registry. The number itself isn’t kept, only a keyed hash. An email, a phone and an ID number can each belong to one account only.</li>
+<li><strong>Identity.</strong> Full name, T.C. kimlik no, birth year, mobile number, IBAN. The number is checked by its digits and then, when the service answers, against the population registry. The number is kept encrypted (only for payment documents), and as a keyed hash. An email, a phone and an ID number can each belong to one account only.</li>
 <li><strong>Rules.</strong> The applicant reads and accepts the field rules.</li>
 <li><strong>Video call.</strong> Merkez calls within {{agent_sla_hours}}: the person shows their ID card, and the IBAN is confirmed as theirs. The result is recorded on the agent’s page.</li>
 <li><strong>Decision.</strong> Activate, <em>send back for correction</em> (the applicant reads the note, corrects, sends again), or refuse. Activation isn’t possible without a verified email and an ID number on record, and needs a second factor from the last 15 minutes.</li>
@@ -488,7 +488,7 @@ ${table(
     [
       'Görevli kimliği',
       'Görevli kaydı',
-      'T.C. kimlik no saklanmaz (yalnızca anahtarlı özet). Hesap silinince e-posta, telefon, doğum yılı silinir.',
+      'T.C. kimlik no ve adres şifreli/kayıtlı tutulur, çünkü ödeme belgesinde yer almaları gerekir; ödeme yapılmamış hesap silinince bunlar da silinir. e-Devlet belgeleri incelenince silinir.',
     ],
     ['Hata kayıtları', 'Sistem', '{{ops_keep_days}}; kişisel veri içermez.'],
   ],
@@ -534,7 +534,7 @@ ${table(
     [
       'An agent’s identity',
       'The agent’s record',
-      'The T.C. kimlik no isn’t kept (only a keyed hash). When the account is deleted, email, phone and birth year go.',
+      'The T.C. kimlik no (encrypted) and the address are kept because a payment document must carry them; when an account that was never paid is deleted, they go too. The e-Devlet documents are deleted once checked.',
     ],
     ['Error records', 'System', '{{ops_keep_days}}; no personal data.'],
   ],
@@ -675,6 +675,424 @@ ${table(
 )}
 <h2>The record of decisions</h2>
 <p>Every change you make is written to the <strong>Audit</strong> log with your name and can’t be removed. When someone asks why a decision was made, the answer has to be there: don’t leave a reason empty or meaningless.</p>`,
+  },
+  {
+    slug: 'documents',
+    icon: 'file',
+    title: { en: 'Verifying e-Devlet documents', tr: 'e-Devlet belgelerini doğrulamak' },
+    summary: {
+      en: 'How to check an applicant’s criminal record and population register extract at e-Devlet, and what to record.',
+      tr: 'Başvuranın adli sicil kaydı ve nüfus kayıt örneği e-Devlet’te nasıl doğrulanır ve ne kaydedilir.',
+    },
+    body: (l) =>
+      l === 'tr'
+        ? `<p>Başvuran iki belge yükler: <strong>adli sicil kaydı</strong> ve <strong>nüfus kayıt örneği</strong>. İkisi de e-Devlet Kapısı’ndan alınmış, üzerinde barkod numarası ve karekod bulunan belgeler olmalıdır. Yüklenen dosyaya güvenilmez: bir PDF kolayca değiştirilebilir. Güvenilen, e-Devlet’in kendi kaydıdır. Doğrulama, e-Devlet’in gösterdiği belgeyi yüklenenle karşılaştırmaktır.</p>
+<h2>Yöntem 1: e-Devlet mobil uygulaması (karekod)</h2>
+<ol>
+<li>Telefonunuzda <strong>e-Devlet</strong> uygulamasını açın. Giriş yapmanız gerekmez.</li>
+<li>Açılış ekranında <strong>“Barkodlu Belge Doğrulama”</strong>yı seçin.</li>
+<li>Merkez’de görevlinin sayfasından belgeyi açın ve ekrandaki <strong>karekodu</strong> telefonla okutun.</li>
+<li>Uygulama, belgenin e-Devlet’teki hâlini gösterir: kime ait olduğu, hangi kurumun verdiği, veriliş tarihi.</li>
+</ol>
+<h2>Yöntem 2: turkiye.gov.tr (barkod numarası)</h2>
+<ol>
+<li><strong>turkiye.gov.tr/belge-dogrulama</strong> adresini açın. Giriş gerekmez.</li>
+<li>Belgedeki <strong>barkod numarasını</strong> girin (başvuranın yazdığı numara Merkez’de belgenin yanında görünür; belgedekiyle aynı olmalıdır).</li>
+<li>İstenirse belge sahibinin <strong>T.C. kimlik numarasını</strong> girin. Bunu görüntülü görüşmede başvurandan isteyin; Merkez numarayı göstermez.</li>
+<li>e-Devlet belgenin kendi kaydındaki hâlini gösterir.</li>
+</ol>
+<h2>Neyi karşılaştırırsınız</h2>
+${table(
+  ['Bakılacak', 'Olması gereken'],
+  [
+    ['Ad soyad', 'Başvurudaki adla harfi harfine aynı.'],
+    ['Belge türü', 'Adli sicil kaydı / nüfus kayıt örneği; başka bir belge değil.'],
+    ['Veriliş tarihi', 'Son 30 gün içinde.'],
+    [
+      'İçerik',
+      'e-Devlet’in gösterdiği ile yüklenen dosya aynı. Fark varsa dosya değiştirilmiştir.',
+    ],
+    ['Adres (nüfus kayıt örneği)', 'Başvurudaki ikamet adresiyle tutarlı.'],
+  ],
+)}
+<h2>Sonucu kaydetmek</h2>
+${table(
+  ['Sonuç', 'Ne zaman', 'Ne olur'],
+  [
+    [
+      'Temiz',
+      'Belge geçerli, kişiyle eşleşiyor ve adli sicil kaydı yok / nüfus kaydı tutarlı.',
+      'Belge doğrulanmış sayılır.',
+    ],
+    [
+      'Kaydı var',
+      'Adli sicil kaydında kayıt görünüyor.',
+      'Başvuru bu hâliyle etkinleştirilemez. Kısa bir gerekçe yazın; kaydın ne olduğunu yazmayın.',
+    ],
+    [
+      'Eşleşmiyor',
+      'Belge başka birine ait ya da e-Devlet’teki hâlinden farklı.',
+      'Belge reddedilir; başvuran yenisini yükleyebilir. Sahtecilik şüphesinde hesabı kapatın.',
+    ],
+    [
+      'Geçersiz',
+      'Barkod bulunamadı, belge eski ya da okunamıyor.',
+      'Belge reddedilir; başvuran yenisini yükler.',
+    ],
+  ],
+)}
+${note('<strong>Adli sicil kaydı özel nitelikli kişisel veridir.</strong> Yalnızca başvuranın açık rızasıyla, yalnızca bu inceleme için işlenir. Kararı kaydettiğiniz anda dosya silinmek üzere sıraya alınır; geriye yalnızca sonuç ve tarihi kalır. Kayıtta ne yazdığını hiçbir yere not etmeyin, ekran görüntüsü almayın, kimseyle paylaşmayın. Belgeyi her açışınız denetim kaydına işlenir.')}
+<h2>Hangi kayıt engeldir?</h2>
+<p>Bu bir hukuki değerlendirmedir ve ölçütü avukatınızla belirleyip burada yazılı hâle getirmeniz gerekir. O zamana kadar: kayıt varsa etkinleştirmeyin ve kararı bir yöneticiye bırakın.</p>`
+        : `<p>An applicant uploads two documents: a <strong>criminal record</strong> (adli sicil kaydı) and a <strong>population register extract</strong> (nüfus kayıt örneği). Both must come from e-Devlet and carry a barcode number and a QR code. The uploaded file isn’t trusted: a PDF is easy to alter. What is trusted is e-Devlet’s own record. Verifying means comparing what e-Devlet shows with what was uploaded.</p>
+<h2>Way 1: the e-Devlet mobile app (QR code)</h2>
+<ol>
+<li>Open the <strong>e-Devlet</strong> app on your phone. You don’t need to sign in.</li>
+<li>On the opening screen choose <strong>“Barkodlu Belge Doğrulama”</strong>.</li>
+<li>In Merkez, open the document from the agent’s page and scan the <strong>QR code</strong> on your screen with the phone.</li>
+<li>The app shows the document as e-Devlet has it: whose it is, which authority issued it, and when.</li>
+</ol>
+<h2>Way 2: turkiye.gov.tr (barcode number)</h2>
+<ol>
+<li>Open <strong>turkiye.gov.tr/belge-dogrulama</strong>. No sign-in is needed.</li>
+<li>Enter the document’s <strong>barcode number</strong> (the number the applicant typed is shown beside the document in Merkez; it must be the one on the document).</li>
+<li>If asked, enter the holder’s <strong>T.C. kimlik no</strong>. Ask the applicant for it on the video call; Merkez doesn’t show it.</li>
+<li>e-Devlet shows the document as it is on record.</li>
+</ol>
+<h2>What you compare</h2>
+${table(
+  ['Look at', 'It should be'],
+  [
+    ['Name', 'The name on the application, letter for letter.'],
+    ['Kind of document', 'A criminal record / a population register extract, not something else.'],
+    ['Date of issue', 'Within the last 30 days.'],
+    [
+      'Content',
+      'What e-Devlet shows and the uploaded file are the same. If they differ, the file was altered.',
+    ],
+    ['Address (register extract)', 'Consistent with the home address on the application.'],
+  ],
+)}
+<h2>Recording the outcome</h2>
+${table(
+  ['Outcome', 'When', 'What happens'],
+  [
+    [
+      'Clear',
+      'The document is valid, matches the person, and shows no criminal record / a consistent register entry.',
+      'The document counts as verified.',
+    ],
+    [
+      'Has a record',
+      'The criminal record shows an entry.',
+      'The application can’t be activated as it stands. Write a short reason; don’t write what the record is.',
+    ],
+    [
+      'Doesn’t match',
+      'The document is someone else’s, or differs from what e-Devlet shows.',
+      'It is refused; the applicant can upload another. If you suspect forgery, close the account.',
+    ],
+    [
+      'Not valid',
+      'The barcode isn’t found, or the document is old or unreadable.',
+      'It is refused; the applicant uploads another.',
+    ],
+  ],
+)}
+${note('<strong>A criminal record is special-category personal data.</strong> It is processed only on the applicant’s explicit consent and only for this check. The moment you record the decision the file is queued for deletion; only the outcome and its date remain. Don’t note anywhere what the record says, don’t take a screenshot, don’t share it. Each time you open the document is written to the audit log.')}
+<h2>Which record is a bar?</h2>
+<p>That is a legal judgement, and the criterion has to be set with your lawyer and written down here. Until then: if there is a record, don’t activate, and leave the decision to an admin.</p>`,
+  },
+  {
+    slug: 'readiness',
+    icon: 'scale',
+    title: { en: 'Before the first customer', tr: 'İlk müşteriden önce' },
+    summary: {
+      en: 'What the law asks of a service like this, what Emanet already does about each point, and what only a lawyer or an accountant can sign.',
+      tr: 'Mevzuatın böyle bir hizmetten ne istediği, Emanet’in her başlıkta ne yaptığı ve yalnızca avukatın ya da mali müşavirin imzalayabileceği şeyler.',
+    },
+    body: (l) =>
+      l === 'tr'
+        ? `<p><strong>Hazırlık</strong> sayfası iki tür kontrol gösterir: sistemin kendisinin görebildikleri ve bir kişinin kaydettiği onaylar. Onay, verildiği sürüm için geçerlidir; metin değişince onay düşer. Ayar açıkken onaylar tamamlanmadan kurum onaylanamaz, görevli etkinleştirilemez.</p>
+<h2>Mevzuat haritası</h2>
+${table(
+  ['Konu', 'Dayanak', 'Emanet ne yapıyor', 'Kimin imzası'],
+  [
+    [
+      'Yakalamayı kim yapar',
+      'İİK; kolluğun yetkisi',
+      'Görevli araca dokunmaz, yalnızca görür ve 112’yi arar. Sözleşme ve kurallar bunu kesin yasak olarak yazar.',
+      'Avukat',
+    ],
+    [
+      'Israrlı takip, özel hayat',
+      'TCK 123/A, 132–136',
+      'Kişi değil araç aranır; adresler yalnızca üstlenen görevliye, süreyle sınırlı gösterilir; her görüntüleme kaydedilir.',
+      'Avukat',
+    ],
+    [
+      'Kişisel veriler',
+      'KVKK m.4–5, 10, 12',
+      'Aydınlatma metinleri; saklama süreleri ayarlardan; silme ve başvuru kaydı; alan düzeyinde şifreleme.',
+      'Avukat',
+    ],
+    [
+      'Özel nitelikli veri (adli sicil)',
+      'KVKK m.6',
+      'Ayrı açık rıza; yalnızca sonuç saklanır; dosya kararla birlikte silinir.',
+      'Avukat',
+    ],
+    [
+      'Yurt dışına aktarım',
+      'KVKK m.9',
+      'Veriler AB’de saklanır. Standart sözleşme imzalanmalı ve 5 iş günü içinde Kurul’a bildirilmelidir.',
+      'Avukat',
+    ],
+    ['VERBİS', 'KVKK m.16', 'Kayıt yükümlülüğü ve istisnalar değerlendirilmelidir.', 'Avukat'],
+    [
+      'Bankaların destek hizmeti alımı',
+      'BDDK destek hizmetleri mevzuatı',
+      'Hizmet sözleşmesi taslağı; denetim, gizlilik ve alt yüklenici hükümleri gözden geçirilmelidir.',
+      'Avukat',
+    ],
+    [
+      'Görevlinin statüsü',
+      'İş Kanunu, 5510, TBK',
+      'Bağımsız çalışma, iş ve süre taahhüdü yok, yalnızca teslimde ödeme. Bağımlılık ilişkisi doğmaması için uygulamanın da böyle kalması gerekir.',
+      'Avukat',
+    ],
+    [
+      'Fatura',
+      'VUK 231/5, e-Fatura',
+      'Teslimden itibaren 7 gün uyarısı; e-Fatura numarası kaydı.',
+      'Mali müşavir',
+    ],
+    [
+      'Görevli ödemelerinin belgesi',
+      'VUK 234, GVK 94',
+      'Ödeme başına ad, kimlik/vergi no, adres, brüt, stopaj, net dökümü. Belgeyi (e-gider pusulası ya da görevlinin faturası/SMM’si) mali müşavir düzenler.',
+      'Mali müşavir',
+    ],
+    [
+      'Stopaj oranları',
+      'GVK 94',
+      'Üç ayar; varsayılan %0. Oranı mali müşavir belirler.',
+      'Mali müşavir',
+    ],
+    [
+      'Defter ve saklama',
+      'TTK 82, VUK 253',
+      'Değiştirilemeyen çift taraflı kayıt; on yıl saklama.',
+      'Mali müşavir',
+    ],
+  ],
+)}
+${note('Bu tablo bir yol haritasıdır, hukuki görüş değildir. Her satırın karşısındaki kişi metni okuyup onayladığında Hazırlık sayfasına adıyla işlenir.')}
+<h2>Dört onay</h2>
+<ul>
+<li><strong>Hizmet sözleşmesi</strong> (avukat): kurumların onayladığı metin.</li>
+<li><strong>Saha görevlisi sözleşmesi</strong> (avukat): görevlinin onayladığı sözleşme, aydınlatma ve açık rıza.</li>
+<li><strong>Gizlilik</strong> (avukat): aydınlatma metinleri, VERBİS değerlendirmesi, yurt dışı aktarım düzeni, saklama süreleri.</li>
+<li><strong>Muhasebe</strong> (mali müşavir): KDV ve stopaj oranları, belge akışı, hesap planı eşlemesi.</li>
+</ul>`
+        : `<p>The <strong>Readiness</strong> page shows two kinds of checks: ones the system can see for itself, and sign-offs a person records. A sign-off holds for the version it was given for; when the text changes, it lapses. While the setting is on, no company can be approved and no agent activated without them.</p>
+<h2>The map of the law</h2>
+${table(
+  ['Subject', 'Basis', 'What Emanet does', 'Whose signature'],
+  [
+    [
+      'Who seizes',
+      'Enforcement law; police powers',
+      'An agent never touches a vehicle, only sees it and calls 112. The agreement and the rules make that an absolute prohibition.',
+      'Lawyer',
+    ],
+    [
+      'Stalking, private life',
+      'Penal Code 123/A, 132–136',
+      'Vehicles are looked for, not people; addresses are shown only to the claiming agent, for a limited time; each view is recorded.',
+      'Lawyer',
+    ],
+    [
+      'Personal data',
+      'KVKK arts. 4–5, 10, 12',
+      'Privacy notices; retention from settings; erasure and a request register; field-level encryption.',
+      'Lawyer',
+    ],
+    [
+      'Special-category data (criminal record)',
+      'KVKK art. 6',
+      'A separate explicit consent; only the outcome is kept; the file goes with the decision.',
+      'Lawyer',
+    ],
+    [
+      'Transfer abroad',
+      'KVKK art. 9',
+      'Data is stored in the EU. The standard contract must be signed and the Board notified within 5 working days.',
+      'Lawyer',
+    ],
+    [
+      'VERBİS',
+      'KVKK art. 16',
+      'The duty to register, and its exemptions, must be assessed.',
+      'Lawyer',
+    ],
+    [
+      'Banks buying support services',
+      'BDDK outsourcing rules',
+      'The service agreement draft; its audit, confidentiality and subcontractor clauses need review.',
+      'Lawyer',
+    ],
+    [
+      'The agent’s status',
+      'Labour law, social security law, Code of Obligations',
+      'Independent work, no promised work or hours, payment only on delivery. Practice must stay that way so that no employment arises.',
+      'Lawyer',
+    ],
+    [
+      'Invoices',
+      'VUK 231/5, e-invoice',
+      'A seven-day warning from delivery; the e-invoice number is recorded.',
+      'Accountant',
+    ],
+    [
+      'Documents for agent payments',
+      'VUK 234, GVK 94',
+      'Per payment: name, ID or tax number, address, gross, withholding, net. The accountant issues the document (an e-gider pusulası, or the agent’s invoice or receipt).',
+      'Accountant',
+    ],
+    [
+      'Withholding rates',
+      'GVK 94',
+      'Three settings, 0 % by default. The accountant sets the rate.',
+      'Accountant',
+    ],
+    [
+      'Books and retention',
+      'TTK 82, VUK 253',
+      'A double-entry record that can’t be edited; kept ten years.',
+      'Accountant',
+    ],
+  ],
+)}
+${note('This table is a map, not legal advice. When the person named in a row has read and confirmed the text, it is recorded on the Readiness page with their name.')}
+<h2>The four sign-offs</h2>
+<ul>
+<li><strong>Service agreement</strong> (lawyer): the text companies accept.</li>
+<li><strong>Agent agreement</strong> (lawyer): the agreement, notice and explicit consent an agent accepts.</li>
+<li><strong>Privacy</strong> (lawyer): the notices, the VERBİS assessment, the transfer arrangement, the retention periods.</li>
+<li><strong>Accounting</strong> (accountant): VAT and withholding rates, the document flow, the chart-of-accounts mapping.</li>
+</ul>`,
+  },
+  {
+    slug: 'accounting',
+    icon: 'chart',
+    title: { en: 'The accountant’s month', tr: 'Mali müşavirin ayı' },
+    summary: {
+      en: 'What to hand the accountant each month, what each file holds, and which document belongs to which payment.',
+      tr: 'Her ay mali müşavire ne verilir, her dosyada ne vardır ve hangi ödemeye hangi belge düzenlenir.',
+    },
+    body: (l) =>
+      l === 'tr'
+        ? `<p><strong>Para → Muhasebe</strong> sayfası bir takvim ayında (Türkiye saati) kayda geçen her şeyi, mali müşavirin kendi programına gireceği biçimde verir. Hiçbir şeyi değiştirmez. Sayfayı her açış, T.C. kimlik numaraları gösterildiği için denetim kaydına işlenir.</p>
+<h2>Dört dosya</h2>
+${table(
+  ['Dosya', 'İçeriği', 'Ne için'],
+  [
+    [
+      'Satış faturaları',
+      'Fatura no, tarih, kurum unvanı, VKN, vergi dairesi, matrah, KDV, toplam, durum.',
+      'KDV beyannamesi, BA/BS, cari hesap.',
+    ],
+    ['Tahsilatlar', 'Valör tarihi, kurum, tutar, banka referansı, fatura no.', 'Banka mutabakatı.'],
+    [
+      'Görevli ödemeleri',
+      'Ödeme tarihi, ad soyad, T.C. kimlik no veya VKN, adres, vergi durumu, brüt, stopaj, net, IBAN, banka referansı.',
+      'e-Gider pusulası ya da görevlinin faturası/SMM’si; muhtasar beyanname.',
+    ],
+    [
+      'Yevmiye',
+      'Her kaydın tarihi, türü, açıklaması, hesap kodu ve adı, borç, alacak.',
+      'Defter kayıtları, mizan kontrolü.',
+    ],
+  ],
+)}
+<p>Dosyalar noktalı virgülle ayrılmış CSV’dir (UTF-8); tutarlar virgüllü ondalıkla liradır. Excel’de doğrudan açılır.</p>
+<h2>Hangi ödemeye hangi belge</h2>
+${table(
+  ['Görevlinin vergi durumu', 'Belge', 'Kim düzenler'],
+  [
+    [
+      'Gerçek kişi (mükellef değil)',
+      'Gider pusulası (e-Fatura mükellefi için e-gider pusulası); üzerinde ad, adres, T.C. kimlik no, brüt, stopaj, net.',
+      'Emanet (mali müşavir)',
+    ],
+    ['Serbest meslek erbabı', 'Serbest meslek makbuzu (e-SMM).', 'Görevli'],
+    ['Şirket', 'Fatura.', 'Görevli'],
+  ],
+)}
+${note('Hangi stopaj oranının uygulanacağı (GVK 94 kapsamındaki hangi bent) işin niteliğine bağlıdır ve mali müşavirin kararıdır. Ayarlardaki üç oran, o karar verilene kadar %0’dır; Hazırlık sayfasındaki muhasebe onayı bu kararın verildiğini kaydeder.')}
+<h2>Aylık sıra</h2>
+<ol>
+<li>Ay bitince <strong>Para → Muhasebe</strong>’de ayı seçin.</li>
+<li><strong>Eksik bilgiler</strong> uyarısı varsa önce onları tamamlayın (adresi ya da kimlik numarası olmayan görevli).</li>
+<li>Borç ve alacak toplamlarının eşit olduğunu kontrol edin.</li>
+<li>Dört dosyayı indirip mali müşavire gönderin.</li>
+<li><strong>Ayı teslim edildi olarak işaretleyin.</strong> Geçmiş bir aya zaten kayıt düşülemez; bu işaret, paketin kim tarafından ve ne zaman alındığını kaydeder.</li>
+</ol>
+<h2>Hesaplar</h2>
+<p>Kayıtlar Tekdüzen Hesap Planı kodlarıyla tutulur (ör. 120 Alıcılar, 391 Hesaplanan KDV, 600 Yurt İçi Satışlar, 360 Ödenecek Vergi ve Fonlar). Kurum bazlı alt hesaplar “120.&lt;kurum&gt;” biçimindedir. Mali müşavir farklı bir eşleme isterse hesap adlarını bildirmeniz yeterlidir.</p>`
+        : `<p><strong>Money → Accounting</strong> gives everything booked in one calendar month (Turkey time) in the shape an accountant enters into their own system. It changes nothing. Each opening of the page is written to the audit log, because it shows national ID numbers.</p>
+<h2>Four files</h2>
+${table(
+  ['File', 'What it holds', 'What for'],
+  [
+    [
+      'Sales invoices',
+      'Number, date, the partner’s legal name, tax number, tax office, net, VAT, total, status.',
+      'The VAT return, BA/BS forms, receivables.',
+    ],
+    [
+      'Receipts',
+      'Value date, partner, amount, bank reference, invoice number.',
+      'Bank reconciliation.',
+    ],
+    [
+      'Payments to agents',
+      'Date paid, name, national ID or tax number, address, tax profile, gross, withholding, net, IBAN, bank reference.',
+      'The e-gider pusulası, or the agent’s invoice or receipt; the withholding return.',
+    ],
+    [
+      'Journal',
+      'Each entry’s date, kind, memo, account code and name, debit, credit.',
+      'The books; checking the trial balance.',
+    ],
+  ],
+)}
+<p>The files are semicolon-separated CSV (UTF-8); amounts are lira with a decimal comma. They open directly in Excel.</p>
+<h2>Which document for which payment</h2>
+${table(
+  ['The agent’s tax profile', 'Document', 'Who issues it'],
+  [
+    [
+      'Individual (not a taxpayer)',
+      'A gider pusulası (an e-gider pusulası for e-invoice taxpayers), carrying name, address, national ID number, gross, withholding and net.',
+      'Emanet (the accountant)',
+    ],
+    ['Sole trader', 'A self-employment receipt (e-SMM).', 'The agent'],
+    ['Company', 'An invoice.', 'The agent'],
+  ],
+)}
+${note('Which withholding rate applies (which paragraph of GVK 94) depends on the nature of the work and is the accountant’s decision. The three rates in Settings are 0 % until that decision is made; the accounting sign-off on the Readiness page records that it has been.')}
+<h2>Each month</h2>
+<ol>
+<li>When the month is over, choose it under <strong>Money → Accounting</strong>.</li>
+<li>If there is a <strong>missing details</strong> warning, complete those first (an agent without an address or ID number).</li>
+<li>Check that debits equal credits.</li>
+<li>Download the four files and send them to the accountant.</li>
+<li><strong>Mark the month as handed over.</strong> Nothing can be booked into a past month anyway; the mark records who took the pack and when.</li>
+</ol>
+<h2>Accounts</h2>
+<p>Entries use codes from the Uniform Chart of Accounts (e.g. 120 Receivables, 391 VAT Payable, 600 Domestic Sales, 360 Taxes and Funds Payable). Per-partner sub-accounts are “120.&lt;partner&gt;”. If the accountant wants a different mapping, the account names are all that needs to change.</p>`,
   },
   {
     slug: 'roles',

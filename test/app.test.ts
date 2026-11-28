@@ -746,3 +746,148 @@ describe('system', () => {
     expect(chosen.headers.get('Content-Language')).toBe('en');
   });
 });
+
+describe('vetting an applicant', () => {
+  it('shows what was accepted and each document with how to verify it', async () => {
+    const cookie = await signIn('admin-1!aal2');
+    const page = await (await request('/agents/agent-1', { headers: { Cookie: cookie } })).text();
+    expect(page).toContain('Accepted the agent agreement');
+    expect(page).toContain('Barkodlu Belge Doğrulama');
+    expect(page).toContain('turkiye.gov.tr/belge-dogrulama');
+    expect(page).toContain('<code>ABC-123456</code>');
+    expect(page).toContain('class="workspace"');
+  });
+
+  it('serves the document sandboxed, records the view, and deletes with the decision', async () => {
+    await env.EVIDENCE.put(
+      'agents/agent-1/criminal_record-1',
+      new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      {
+        httpMetadata: { contentType: 'application/pdf' },
+      },
+    );
+    const cookie = await signIn('admin-1!aal2');
+    const file = await request('/agents/agent-1/documents/doc-1', { headers: { Cookie: cookie } });
+    expect(file.status).toBe(200);
+    expect(file.headers.get('Content-Type')).toBe('application/pdf');
+    expect(file.headers.get('Content-Security-Policy')).toContain('sandbox');
+    await file.arrayBuffer();
+    expect(await callsOf('documentFile')).toEqual([['admin-1', 'doc-1']]);
+    // Another agent's address doesn't open it.
+    expect(
+      (await request('/agents/agent-2/documents/doc-1', { headers: { Cookie: cookie } })).status,
+    ).toBe(404);
+    // A record that isn't clean needs a reason.
+    const bare = await post('/agents/agent-1/documents/doc-1/decide', cookie, {
+      outcome: 'has_record',
+    });
+    expect(bare.status).toBe(422);
+    const done = await post('/agents/agent-1/documents/doc-1/decide', cookie, { outcome: 'clear' });
+    expect(done.headers.get('Location')).toBe('/agents/agent-1?done=document_decided');
+    const after = await (await request('/agents/agent-1', { headers: { Cookie: cookie } })).text();
+    expect(after).toContain('The file has been deleted; only this result is kept.');
+    expect(
+      (await request('/agents/agent-1/documents/doc-1', { headers: { Cookie: cookie } })).status,
+    ).toBe(404);
+    const support = await signIn('support-1!aal2');
+    expect(
+      (await post('/agents/agent-1/documents/doc-2/decide', support, { outcome: 'clear' })).status,
+    ).toBe(403);
+  });
+});
+
+describe('readiness', () => {
+  it('shows what is open, takes sign-offs with a name, and warns on Today', async () => {
+    const cookie = await signIn('admin-1!aal2');
+    const today = await (await request('/', { headers: { Cookie: cookie } })).text();
+    expect(today).toContain('Not ready for the first customer yet.');
+    const page = await (await request('/readiness', { headers: { Cookie: cookie } })).text();
+    expect(page).toContain('Companies can’t be approved yet');
+    expect(page).toContain('action="/readiness/accounting_setup"');
+    expect((await post('/readiness/legal_privacy', cookie, { signer: 'x' })).status).toBe(422);
+    for (const key of [
+      'legal_service_agreement',
+      'legal_agent_agreement',
+      'legal_privacy',
+      'accounting_setup',
+    ]) {
+      const signed = await post(`/readiness/${key}`, cookie, {
+        signer: 'Av. Ayşe Örnek',
+        note: 'e-posta',
+      });
+      expect(signed.headers.get('Location')).toBe('/readiness?done=signed');
+    }
+    const ready = await (await request('/readiness', { headers: { Cookie: cookie } })).text();
+    expect(ready).toContain('Companies can be approved');
+    expect(ready).toContain('Av. Ayşe Örnek');
+    expect(await (await request('/', { headers: { Cookie: cookie } })).text()).not.toContain(
+      'Not ready for the first customer yet.',
+    );
+    const back = await post('/readiness/legal_privacy/withdraw', cookie);
+    expect(back.headers.get('Location')).toBe('/readiness?done=unsigned');
+    const support = await signIn('support-1!aal2');
+    expect((await post('/readiness/legal_privacy', support, { signer: 'Av. X Y' })).status).toBe(
+      403,
+    );
+  });
+});
+
+describe('the accountant’s month', () => {
+  it('shows totals, what is missing, and gives four files Excel can read', async () => {
+    const cookie = await signIn('admin-1!aal2');
+    const page = await (await request('/money/accounting', { headers: { Cookie: cookie } })).text();
+    expect(page).toContain('The journal balances');
+    expect(page).toContain('Missing details for a payment document');
+    expect(page).not.toContain('10000000146');
+    const csv = await request('/money/accounting/2026-11/payouts.csv', {
+      headers: { Cookie: cookie },
+    });
+    expect(csv.headers.get('Content-Disposition')).toContain('emanet-2026-11-payouts.csv');
+    const bytes = new Uint8Array(await csv.arrayBuffer());
+    // A byte-order mark, so Excel reads the Turkish letters.
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    const text = new TextDecoder().decode(bytes);
+    expect(text.startsWith('Odeme Tarihi;Ad Soyad;TCKN;')).toBe(true);
+    expect(text).toContain(';10000000146;');
+    expect(text).toContain('5000,00;500,00;4500,00');
+    // A quote is doubled, and a value that would run as a formula is kept as text.
+    expect(text).toContain('"Örnek Mah. No:1 ""A"" Blok"');
+    expect(text).toContain(";'=cmd;");
+    for (const name of ['invoices', 'receipts', 'journal']) {
+      const file = await request(`/money/accounting/2026-11/${name}.csv`, {
+        headers: { Cookie: cookie },
+      });
+      expect(file.status, name).toBe(200);
+      await file.text();
+    }
+    expect(
+      (await request('/money/accounting/2026-11/x.csv', { headers: { Cookie: cookie } })).status,
+    ).toBe(404);
+    expect((await post('/money/accounting/2026-11/close', cookie)).status).toBe(422);
+    expect((await post('/money/accounting/2026-10/close', cookie)).headers.get('Location')).toBe(
+      '/money/accounting?month=2026-10&done=month_closed',
+    );
+    // ID numbers are for owners and admins.
+    const support = await signIn('support-1!aal2');
+    expect((await request('/money/accounting', { headers: { Cookie: support } })).status).toBe(403);
+    expect(
+      (await request('/money/accounting/2026-11/payouts.csv', { headers: { Cookie: support } }))
+        .status,
+    ).toBe(403);
+  });
+});
+
+describe('search', () => {
+  it('finds agents and partners by what staff know of them', async () => {
+    const cookie = await signIn('support-1!aal2');
+    const byName = await (await request('/search?q=ali', { headers: { Cookie: cookie } })).text();
+    expect(byName).toContain('href="/agents/agent-1"');
+    const byTax = await (
+      await request('/search?q=1234567890', { headers: { Cookie: cookie } })
+    ).text();
+    expect(byTax).toContain('href="/partners/p-1"');
+    const none = await (await request('/search?q=zzzz', { headers: { Cookie: cookie } })).text();
+    expect(none).toContain('Nothing found among agents and partners.');
+    expect((await request('/search?q=ali')).status).not.toBe(200);
+  });
+});

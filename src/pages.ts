@@ -67,7 +67,8 @@ export type Section =
   | 'audit'
   | 'privacy'
   | 'system'
-  | 'guide';
+  | 'guide'
+  | 'readiness';
 
 export interface Nav {
   signedIn: boolean;
@@ -111,7 +112,8 @@ export function layout(title: string, nav: Nav, body: string): string {
     `<a href="${href}"${nav.current === key ? ' aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span></a>`;
   const group = (label: string) => `<span class="group">${label}</span>`;
   const sections = nav.role
-    ? `<nav aria-label="Sections">
+    ? `<form class="rail-search" method="get" action="/search" role="search"><label><span class="visually-hidden">Search</span>${icon('search')}<input name="q" type="search" minlength="2" placeholder="Search" autocomplete="off"></label></form>
+      <nav aria-label="Sections">
         ${group('Work')}
         ${link('home', '/', 'Today', 'today')}
         ${link('reviews', '/reviews', 'Reviews', 'reviews')}
@@ -125,6 +127,7 @@ export function layout(title: string, nav: Nav, body: string): string {
         ${link('audit', '/audit', 'Audit', 'audit')}
         ${link('privacy', '/privacy', 'Privacy', 'privacy')}
         ${link('system', '/system', 'System', 'system')}
+        ${link('readiness', '/readiness', 'Readiness', 'scale')}
         ${group('Help')}
         ${link('guide', '/guide', 'Handbook', 'guide')}
       </nav>`
@@ -299,7 +302,14 @@ export function queueCards(queues: Queue[], now: number): string {
   return `<div class="queues" translate="no">${cards}</div>`;
 }
 
-export function today(nav: Nav, t: Today, now: number, queues: Queue[] = []): string {
+export function today(
+  nav: Nav,
+  t: Today,
+  now: number,
+  queues: Queue[] = [],
+  /** Whether the lawyer's and accountant's sign-offs are in; null when unknown. */
+  ready: boolean | null = null,
+): string {
   const tile = (href: string, count: number, label: string, glyph: IconName) =>
     `<a href="${href}">${icon(glyph)}<strong translate="no">${String(count)}</strong><span>${label}</span></a>`;
   const late = t.uninvoiced.filter((u) => now - u.oldest_delivery > (INVOICE_DAYS - 2) * 86_400);
@@ -315,6 +325,7 @@ export function today(nav: Nav, t: Today, now: number, queues: Queue[] = []): st
     { ...nav, current: 'home' },
     `<header class="page-head"><div><h1>Today</h1>${summary}</div>
        <a class="button secondary" href="/guide/operations">${icon('guide')}<span translate="no">${esc(L('How the day runs', 'Gün nasıl yürür'))}</span></a></header>
+     ${ready === false ? `<a class="banner" href="/readiness" translate="no">${icon('scale')}<span><strong>${esc(L('Not ready for the first customer yet.', 'İlk müşteri için henüz hazır değil.'))}</strong> ${esc(L('Sign-offs or set-up are missing: companies can’t be approved and agents can’t be activated. See what is open.', 'Onaylar ya da kurulum eksik: kurum onaylanamaz, görevli etkinleştirilemez. Açık olanlara bakın.'))}</span>${icon('arrow')}</a>` : ''}
      ${queues.length > 0 ? `<h2>Queues</h2>${queueCards(queues, now)}` : ''}
      <h2>To do</h2>
      <div class="counts">
@@ -1020,6 +1031,8 @@ export function agentDetail(
   fresh: boolean,
   noticeText: string | null,
   errorText: string | null,
+  /** The agreement and documents part (src/pages-ops.ts). */
+  vetting = '',
 ): string {
   const path = `/agents/${a.user_id}`;
   const check =
@@ -1087,14 +1100,17 @@ export function agentDetail(
     'Agent',
     { ...nav, current: 'agents' },
     `${notice(noticeText)}
+     <p class="crumbs"><a href="/agents">Agents</a> <span aria-hidden="true">/</span> ${a.legal_name ? data(a.legal_name) : '—'}</p>
      <h1>${a.legal_name ? data(a.legal_name) : 'No name yet'} <span class="status ${a.status}">${AGENT_STATUS[a.status]}</span></h1>
      ${error(errorText)}
      ${returned}
+     <div class="workspace"><div class="workspace-main">
      <div class="panel"><dl class="facts">
        <dt>Mobile</dt><dd>${a.phone ? `<a href="tel:${attr(a.phone)}" translate="no">${esc(a.phone)}</a>` : '—'}</dd>
        <dt>Email</dt><dd>${a.email ? data(a.email) : '—'}</dd>
        <dt>Birth year</dt><dd>${a.birth_year ? data(String(a.birth_year)) : '—'}</dd>
        <dt>City</dt><dd>${a.city ? data(a.city) : '—'}</dd>
+       <dt translate="no">${esc(L('Home address', 'İkamet adresi'))}</dt><dd>${a.address ? data(a.address) : '—'}</dd>
        <dt>IBAN</dt><dd>${a.iban ? data(a.iban) : '—'} ${a.iban ? (a.iban_verified ? '<span class="status active">Verified</span>' : '<span class="status kyc_pending">Not verified</span>') : ''}</dd>
        <dt>Tax</dt><dd>${TAX_LABEL[a.tax_profile] ?? data(a.tax_profile)}${a.vkn ? ` · ${data(a.vkn)}` : ''}</dd>
        <dt>Applied</dt><dd>${day(a.submitted_at)}</dd>
@@ -1103,13 +1119,21 @@ export function agentDetail(
        <dt>Deliveries</dt><dd translate="no">${String(a.deliveries)}</dd>
        <dt>Strikes</dt><dd translate="no">${String(a.strikes)}</dd>
      </dl></div>
+     ${vetting}
      ${kycList(a, checks)}
      ${check}
-     ${needsConfirm ? confirmFirst(path) : ''}
      ${call}
      ${iban}
-     ${sendBack}
-     ${status}`,
+     </div>
+     <aside class="workspace-side">
+       <div class="panel decision"><h2 translate="no">${esc(L('Decision', 'Karar'))}</h2>
+         ${needsConfirm ? confirmFirst(path) : ''}
+         ${!canChange ? `<p class="hint" translate="no">${esc(L('An owner or admin decides.', 'Kararı sahip ya da yönetici verir.'))}</p>` : ''}
+         ${sendBack}
+         ${status}
+         <p class="hint" translate="no">${esc(L('Activation needs: a verified email, an ID number, both e-Devlet documents clear, a passed video call, a verified IBAN, and the sign-offs on the Readiness page.', 'Etkinleştirme için: doğrulanmış e-posta, kimlik numarası, iki e-Devlet belgesinin de temiz olması, başarılı görüntülü görüşme, doğrulanmış IBAN ve Hazırlık sayfasındaki onaylar gerekir.'))}</p>
+       </div>
+     </aside></div>`,
   );
 }
 
@@ -1237,7 +1261,7 @@ export function money(
   return layout(
     'Money',
     { ...nav, current: 'money' },
-    `${notice(noticeText)}<h1>Money</h1>
+    `${notice(noticeText)}<header class="page-head"><h1>Money</h1><a class="button secondary" href="/money/accounting" translate="no">${icon('chart')}<span>${esc(L('Accounting: the month for the accountant', 'Muhasebe: mali müşavirin ayı'))}</span></a></header>
      <p class="lede">Partners are invoiced for delivered vehicles. An agent is paid after the partner’s payment is in the bank: order the payout here, send it from the bank, then record its reference.</p>
      ${error(errorText)}
      ${canChange && !fresh ? confirmFirst('/money') : ''}
