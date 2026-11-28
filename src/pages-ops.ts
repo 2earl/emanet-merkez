@@ -27,6 +27,7 @@ import {
   moment,
   notice,
   type Nav,
+  crumbs,
 } from './pages';
 
 // ---- An applicant's documents and acceptance --------------------------------------------------------
@@ -358,7 +359,7 @@ export function accountingPage(
     'Accounting',
     { ...nav, current: 'money' },
     `${notice(noticeText)}<div translate="no">
-       <p class="crumbs"><a href="/money">${esc(L('Money', 'Para'))}</a> <span aria-hidden="true">/</span> ${esc(L('Accounting', 'Muhasebe'))}</p>
+       ${crumbs([`<a href="/money">${esc(L('Money', 'Para'))}</a>`, esc(L('Accounting', 'Muhasebe'))])}
        <header class="page-head"><div><h1>${esc(L('Accounting', 'Muhasebe'))} · ${esc(m.month)}</h1>
          <p class="lede">${esc(L('Everything booked in this month, Turkey time, as the accountant enters it. Opening this page is recorded, because it reads ID numbers.', 'Bu ayda (Türkiye saati) kayda geçen her şey, mali müşavirin gireceği biçimde. Bu sayfanın açılması, kimlik numaralarını okuduğu için kaydedilir.'))}</p></div>
          <a class="button secondary" href="/guide/accounting">${icon('guide')}<span>${esc(L('How to use this', 'Nasıl kullanılır'))}</span></a></header>

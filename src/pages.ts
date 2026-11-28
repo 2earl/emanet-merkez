@@ -189,6 +189,21 @@ export function confirmFirst(returnTo: string): string {
   return `<p class="panel">To change money or rules, confirm it’s you first. <a class="button secondary" href="/signin?second_factor=1&amp;return=${encodeURIComponent(returnTo)}">Confirm it’s you</a></p>`;
 }
 
+/**
+ * The breadcrumb (2earl design system): parents as links, then this page. Each item is HTML
+ * already made safe by the caller. On a phone only the direct parent shows, as one step back.
+ */
+export function crumbs(items: string[]): string {
+  const last = items.length - 1;
+  return `<nav class="crumbs" aria-label="Breadcrumb"><ol>${items
+    .map((item, i) =>
+      i === last
+        ? `<li><span aria-current="page">${item}</span></li>`
+        : `<li${i === last - 1 ? ' class="back-to"' : ''}>${item}</li>`,
+    )
+    .join('')}</ol></nav>`;
+}
+
 export function problem(nav: Nav, title: string, text: string): string {
   return layout(
     title,
@@ -415,7 +430,27 @@ export function reviewList(
   items: ReviewItem[],
   kind: ReviewItem['kind'] | null,
   noticeText: string | null,
+  /** The time and each queue's limit, so a review shows how long it has waited and whether it is late. */
+  now: number | null = null,
+  queues: Queue[] = [],
 ): string {
+  const limit = (k: ReviewItem['kind']) =>
+    queues.find((q) => q.key === (k === 'delivery' ? 'delivery' : 'identity'))?.limit_seconds ??
+    null;
+  const waited = (i: ReviewItem) => {
+    if (now === null) return moment(i.created_at);
+    const seconds = now - i.created_at;
+    const max = limit(i.kind);
+    const state =
+      max === null ? '' : seconds > max ? ' overdue' : seconds > max * 0.75 ? ' due' : '';
+    const label =
+      state === ' overdue'
+        ? L('Late', 'Gecikti')
+        : state === ' due'
+          ? L('Due soon', 'Yaklaşıyor')
+          : '';
+    return `<span translate="no">${esc(lasting(seconds))}</span>${label ? ` <span class="status${state}" translate="no">${esc(label)}</span>` : ''}<br><span class="hint">${moment(i.created_at)}</span>`;
+  };
   const filters = [
     `<a href="/reviews"${kind === null ? ' aria-current="page"' : ''}>All</a>`,
     ...(['delivery', 'missing_vin', 'plate_conflict'] as const).map(
@@ -427,12 +462,13 @@ export function reviewList(
   const table =
     shown.length === 0
       ? '<p class="panel">Nothing to review.</p>'
-      : `<table><thead><tr><th>Kind</th><th>Waiting since</th><th>Details</th></tr></thead><tbody>${shown
+      : `<table><thead><tr><th>Kind</th><th>Waiting</th><th>Details</th><th></th></tr></thead><tbody>${shown
           .map(
             (i) => `<tr>
               <td><a href="/reviews/${attr(i.id)}">${REVIEW_KIND[i.kind]}</a></td>
-              <td>${moment(i.created_at)}</td>
+              <td>${waited(i)}</td>
               <td>${reviewSummary(i)}</td>
+              <td><a class="button secondary" href="/reviews/${attr(i.id)}">Review</a></td>
             </tr>`,
           )
           .join('')}</tbody></table>`;
@@ -1144,7 +1180,7 @@ export function agentDetail(
     'Agent',
     { ...nav, current: 'agents' },
     `${notice(noticeText)}
-     <p class="crumbs"><a href="/agents">Agents</a> <span aria-hidden="true">/</span> ${a.legal_name ? data(a.legal_name) : '—'}</p>
+     ${crumbs([`<a href="/agents">Agents</a>`, a.legal_name ? data(a.legal_name) : '—'])}
      <h1>${a.legal_name ? data(a.legal_name) : 'No name yet'} <span class="status ${a.status}">${AGENT_STATUS[a.status]}</span></h1>
      ${error(errorText)}
      ${returned}

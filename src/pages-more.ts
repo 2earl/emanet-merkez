@@ -20,6 +20,7 @@ import {
   liraInput,
   notice,
   type Nav,
+  crumbs,
 } from './pages';
 import {
   GROUP_TEXT,
@@ -308,7 +309,7 @@ export function guideChapter(nav: Nav, slug: string, settings: SettingInfo[]): s
     'Handbook',
     { ...nav, current: 'guide' },
     `<div translate="no" lang="${l}">
-       <p class="crumbs"><a href="/guide">${esc(L('Handbook', 'El kitabı'))}</a> <span aria-hidden="true">/</span> ${esc(head.title[l])}</p>
+       ${crumbs([`<a href="/guide">${esc(L('Handbook', 'El kitabı'))}</a>`, esc(head.title[l])])}
        <div class="with-toc">
          <nav class="toc" aria-labelledby="toc-title"><strong id="toc-title">${esc(L('Chapters', 'Bölümler'))}</strong>${side}</nav>
          <article class="prose toc-body">

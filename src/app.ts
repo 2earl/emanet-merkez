@@ -661,7 +661,10 @@ export function createApp(now: () => number) {
       ? (kind as ReviewItem['kind'])
       : null;
     const queue = unwrap(await core(c.env).reviewQueue(500));
-    return c.html(pages.reviewList(nav(c), queue, filter, done(c)));
+    const queues = await core(c.env).queues();
+    return c.html(
+      pages.reviewList(nav(c), queue, filter, done(c), c.get('now'), queues.ok ? queues.value : []),
+    );
   });
 
   const showReview = async (c: AppContext, error: string | null, status: 200 | 409 | 422 = 200) => {
