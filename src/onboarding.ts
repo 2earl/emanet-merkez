@@ -2,7 +2,7 @@ import type { Hono } from 'hono';
 import {
   ONBOARDING_STATUSES,
   PARTNER_KINDS,
-  can,
+  type Permission,
   core,
   type OnboardingStatus,
   type PartnerKind,
@@ -23,6 +23,7 @@ interface Deps {
   nav: (c: AppContext) => Nav;
   uid: (c: AppContext) => string;
   role: (c: AppContext) => StaffRole;
+  may: (c: AppContext, permission: Permission) => boolean;
   fresh: (c: AppContext) => boolean;
   changer: (c: AppContext) => Response | null;
   sensitive: (c: AppContext, page: string) => Response | null;
@@ -53,7 +54,7 @@ export function registerOnboarding(app: Hono<AppEnv>, d: Deps): void {
         d.nav(c),
         rows.value,
         filter,
-        can.change(d.role(c)),
+        d.may(c, 'emanet:control.change'),
         message,
         values,
         provider.ok && provider.value === null,
@@ -106,7 +107,7 @@ export function registerOnboarding(app: Hono<AppEnv>, d: Deps): void {
         d.nav(c),
         found.value,
         d.uid(c),
-        can.change(d.role(c)),
+        d.may(c, 'emanet:control.change'),
         d.fresh(c),
         d.done(c),
         message,

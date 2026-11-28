@@ -16,6 +16,23 @@ const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
   .replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
 const ROLES = { 'owner-1': 'owner', 'admin-1': 'admin', 'admin-2': 'admin', 'support-1': 'support' };
 const base = (uid) => uid.split('!')[0];
+// login's Authorization: Emanet's staff defaults (login src/services.ts), plus what a test gives.
+const DEFAULTS = {
+  owner: ['emanet:control.change', 'emanet:control.review'],
+  admin: ['emanet:control.change', 'emanet:control.review'],
+  support: ['emanet:control.review'],
+};
+const extra = new Map();
+export class Authorization extends WorkerEntrypoint {
+  async permissionsOf({ subject, orgId }) {
+    if (this.ctx.props?.service !== 'emanet') throw new Error('bind with props.service');
+    if (orgId) return { permissions: [], roles: [], baseRole: null };
+    const role = ROLES[subject.id] ?? null;
+    const permissions = role ? [...new Set([...DEFAULTS[role], ...(extra.get(subject.id) ?? [])])].sort() : [];
+    return { permissions, roles: [], baseRole: role };
+  }
+  async testGive(uid, permissions) { extra.set(uid, permissions); }
+}
 export class StaffDirectory extends WorkerEntrypoint {
   async roleOf(uid) { return ROLES[uid] ?? null; }
 }
