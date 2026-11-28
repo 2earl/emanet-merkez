@@ -11,13 +11,20 @@ export type StaffRole = 'owner' | 'admin' | 'support';
 export const STAFF_ROLES: readonly StaffRole[] = ['owner', 'admin', 'support'];
 
 /**
- * Support reads everything and settles identity reviews. Owners and admins also change partners,
- * agents and settings, confirm deliveries (which creates money owed), and move money.
+ * What a staff member may do here, from login's authorization API (2earl/login
+ * docs/AUTHORIZATION.md), across 2earl: `emanet:control.review` (every staff role by default:
+ * read everything, settle identity reviews) and `emanet:control.change` (owners and admins by
+ * default, and anyone the owner gives "Merkez admin" on login's /admin/team: change partners,
+ * agents and settings, confirm deliveries, move money). Read live on every request.
  */
-export const can = {
-  review: (role: StaffRole) => STAFF_ROLES.includes(role),
-  change: (role: StaffRole) => role === 'owner' || role === 'admin',
-};
+export type Permission = 'emanet:control.review' | 'emanet:control.change';
+export interface Authorization {
+  permissionsOf(query: {
+    subject: { type: 'user' | 'service_account'; id: string };
+    orgId?: string;
+  }): Promise<{ permissions: string[]; roles: string[]; baseRole: string | null }>;
+}
+export const authz = (env: Env): Authorization => env.AUTHZ as unknown as Authorization;
 
 export interface StaffDirectory {
   roleOf(userId: string): Promise<StaffRole | null>;

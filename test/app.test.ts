@@ -116,6 +116,19 @@ describe('reviews', () => {
     expect(response.headers.get('Location')).toBe('/reviews?done=rejected');
   });
 
+  it('follows what login says: support given Merkez admin may confirm', async () => {
+    const authz = env.AUTHZ as unknown as {
+      testGive(uid: string, permissions: string[]): Promise<void>;
+    };
+    await authz.testGive('support-1', ['emanet:control.change']);
+    const support = await signIn('support-1!aal2');
+    const page = await (await request('/reviews/r-del', { headers: { Cookie: support } })).text();
+    expect(page).toContain('Confirm the vehicle is in custody');
+    await authz.testGive('support-1', []);
+    const after = await (await request('/reviews/r-del', { headers: { Cookie: support } })).text();
+    expect(after).not.toContain('Confirm the vehicle is in custody');
+  });
+
   it('lets only owners and admins confirm deliveries', async () => {
     const support = await signIn('support-1!aal2');
     expect((await post('/reviews/r-del/deliver', support)).status).toBe(403);

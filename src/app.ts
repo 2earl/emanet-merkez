@@ -14,7 +14,8 @@ import {
 } from './auth';
 import {
   DELIVERY_CHECKS,
-  can,
+  authz,
+  type Permission,
   core,
   staff,
   type AgentRow,
@@ -351,8 +352,11 @@ export function createApp(now: () => number) {
         c.req.method === 'GET' ? 302 : 303,
       );
     }
-    const role = await staff(c.env).roleOf(session.uid);
-    if (!role) {
+    const [role, granted] = await Promise.all([
+      staff(c.env).roleOf(session.uid),
+      authz(c.env).permissionsOf({ subject: { type: 'user', id: session.uid } }),
+    ]);
+    if (!role || !granted.permissions.includes('emanet:control.review')) {
       return c.html(
         pages.problem(
           { signedIn: true },
@@ -363,6 +367,7 @@ export function createApp(now: () => number) {
       );
     }
     c.set('role', role);
+    c.set('permissions', new Set(granted.permissions));
     c.set('dev', await devUntil(c));
     await next();
     return undefined;
@@ -374,6 +379,8 @@ export function createApp(now: () => number) {
 
   const uid = (c: AppContext) => c.get('session')?.uid ?? '';
   const role = (c: AppContext) => c.get('role');
+  /** Whether the staff member may do this here (login's authorization API, read in staffGate). */
+  const may = (c: AppContext, permission: Permission) => c.get('permissions').has(permission);
   const fresh = (c: AppContext) => {
     const session = c.get('session');
     return session !== null && hasFreshSecondFactor(session, c.get('now'));
@@ -384,13 +391,13 @@ export function createApp(now: () => number) {
     c.html(pages.problem(nav(c), 'Not found', 'This page doesn’t exist.'), 404);
   /** A form that changes money or rules: owner or admin, with a second factor from the last 15 min. */
   const sensitive = (c: AppContext, page: string) => {
-    if (!can.change(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.change')) return forbidden(c);
     if (!fresh(c)) {
       return c.redirect(`/signin?second_factor=1&return=${encodeURIComponent(page)}`, 303);
     }
     return null;
   };
-  const changer = (c: AppContext) => (can.change(role(c)) ? null : forbidden(c));
+  const changer = (c: AppContext) => (may(c, 'emanet:control.change') ? null : forbidden(c));
   const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: string }): T => {
     if (!result.ok) throw new Error(`core: ${result.error}`);
     return result.value;
@@ -468,7 +475,7 @@ export function createApp(now: () => number) {
       ops.readinessPage(
         nav(c),
         unwrap(await core(c.env).readiness()),
-        can.change(role(c)),
+        may(c, 'emanet:control.change'),
         fresh(c),
         done(c),
         error,
@@ -501,7 +508,7 @@ export function createApp(now: () => number) {
   // ---- The accountant's month -------------------------------------------------------------------
 
   app.get('/money/accounting', async (c) => {
-    if (!can.change(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.change')) return forbidden(c);
     const months = unwrap(await core(c.env).accountingMonths());
     const month = c.req.query('month') ?? months[0]?.month ?? null;
     const data = month ? await core(c.env).accountingMonth(uid(c), month) : null;
@@ -510,14 +517,14 @@ export function createApp(now: () => number) {
         nav(c),
         months,
         data?.ok ? data.value : null,
-        can.change(role(c)),
+        may(c, 'emanet:control.change'),
         done(c),
       ),
     );
   });
 
   app.get('/money/accounting/:month/:file', async (c) => {
-    if (!can.change(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.change')) return forbidden(c);
     const name = c.req.param('file').replace(/\.csv$/, '');
     const data = await core(c.env).accountingMonth(uid(c), c.req.param('month'));
     const csv = data.ok ? ops.accountingCsv(data.value, name) : null;
@@ -654,13 +661,16 @@ export function createApp(now: () => number) {
   const showReview = async (c: AppContext, error: string | null, status: 200 | 409 | 422 = 200) => {
     const result = await core(c.env).review(c.req.param('id') ?? '');
     if (!result.ok) return notFound(c);
-    return c.html(pages.reviewDetail(nav(c), result.value, role(c), fresh(c), error), status);
+    return c.html(
+      pages.reviewDetail(nav(c), result.value, may(c, 'emanet:control.change'), fresh(c), error),
+      status,
+    );
   };
 
   app.get('/reviews/:id', (c) => showReview(c, null));
 
   app.post('/reviews/:id/accept', async (c) => {
-    if (!can.review(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
     const form = await c.req.parseBody();
     const vin = text(form.vin).toUpperCase().replace(/\s/g, '');
     const result = await core(c.env).resolveIdentity(uid(c), c.req.param('id'), {
@@ -673,7 +683,7 @@ export function createApp(now: () => number) {
   });
 
   app.post('/reviews/:id/reject', async (c) => {
-    if (!can.review(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
     const form = await c.req.parseBody();
     const result = await core(c.env).resolveIdentity(uid(c), c.req.param('id'), {
       action: 'reject',
@@ -748,6 +758,7 @@ export function createApp(now: () => number) {
     nav,
     uid,
     role,
+    may,
     fresh,
     changer,
     sensitive,
@@ -794,7 +805,14 @@ export function createApp(now: () => number) {
     const result = await core(c.env).partner(c.req.param('id') ?? '');
     if (!result.ok) return notFound(c);
     return c.html(
-      pages.partnerDetail(nav(c), result.value, can.change(role(c)), fresh(c), done(c), error),
+      pages.partnerDetail(
+        nav(c),
+        result.value,
+        may(c, 'emanet:control.change'),
+        fresh(c),
+        done(c),
+        error,
+      ),
       status,
     );
   };
@@ -906,7 +924,7 @@ export function createApp(now: () => number) {
       agent.status === 'kyc_pending' && !agent.erased_at
         ? core(c.env).activationChecklist(agent.user_id)
         : Promise.resolve(null),
-      can.change(role(c)) ? core(c.env).holds() : Promise.resolve(null),
+      may(c, 'emanet:control.change') ? core(c.env).holds() : Promise.resolve(null),
     ]);
     const hold =
       holds?.ok === true
@@ -922,26 +940,30 @@ export function createApp(now: () => number) {
         nav(c),
         agent,
         checks.ok ? checks.value : [],
-        can.change(role(c)),
+        may(c, 'emanet:control.change'),
         fresh(c),
         done(c),
         error,
         (activation?.ok
-          ? ops.activationPanel(agent, activation.value, can.change(role(c)) && fresh(c))
+          ? ops.activationPanel(
+              agent,
+              activation.value,
+              may(c, 'emanet:control.change') && fresh(c),
+            )
           : '') +
           ops.vettingPanel(
             agent,
             documents.ok ? documents.value : [],
             accepted.ok ? accepted.value : null,
-            can.change(role(c)) && fresh(c),
+            may(c, 'emanet:control.change') && fresh(c),
           ) +
           asks.requestsPanel(
             agent,
             asked.ok ? asked.value : [],
-            can.review(role(c)),
+            may(c, 'emanet:control.review'),
             c.get('now'),
           ) +
-          asks.holdPanel(agent.user_id, hold, can.change(role(c)), fresh(c)),
+          asks.holdPanel(agent.user_id, hold, may(c, 'emanet:control.change'), fresh(c)),
       ),
       status,
     );
@@ -949,7 +971,7 @@ export function createApp(now: () => number) {
 
   // Asking an agent for details or documents: anyone who reviews applications.
   app.post('/agents/:id/ask', async (c) => {
-    if (!can.review(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
     const list = asks.asksFrom(await formValues(c));
     const result = await core(c.env).askAgent(uid(c), c.req.param('id'), list);
     if (!result.ok) {
@@ -960,7 +982,7 @@ export function createApp(now: () => number) {
   });
 
   app.post('/agents/:id/requests/:request/settle', async (c) => {
-    if (!can.review(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
     const v = await formValues(c);
     const result = await core(c.env).settleAgentRequest(
       uid(c),
@@ -974,7 +996,7 @@ export function createApp(now: () => number) {
   });
 
   app.post('/agents/:id/requests/:request/again', async (c) => {
-    if (!can.review(role(c))) return forbidden(c);
+    if (!may(c, 'emanet:control.review')) return forbidden(c);
     const v = await formValues(c);
     const result = await core(c.env).askAgentAgain(uid(c), c.req.param('request'), v.note ?? '');
     if (!result.ok) {
@@ -1000,7 +1022,7 @@ export function createApp(now: () => number) {
         nav(c),
         agent,
         unwrap(overview),
-        can.change(role(c)),
+        may(c, 'emanet:control.change'),
         fresh(c),
         Math.max(1, Math.round(days / 365)),
         error,
@@ -1170,7 +1192,7 @@ export function createApp(now: () => number) {
           dualApprovalKurus: unwrap(settings).dual_approval_kurus,
         },
         uid(c),
-        can.change(role(c)),
+        may(c, 'emanet:control.change'),
         fresh(c),
         c.get('now'),
         done(c),
@@ -1276,7 +1298,7 @@ export function createApp(now: () => number) {
         nav(c),
         known(unwrap(settings)),
         unwrap(rule),
-        can.change(role(c)),
+        may(c, 'emanet:control.change'),
         fresh(c),
         done(c),
         error,
@@ -1424,7 +1446,7 @@ export function createApp(now: () => number) {
           found: found?.ok ? found.value : null,
           requests: unwrap(requests),
         },
-        can.change(role(c)),
+        may(c, 'emanet:control.change'),
         fresh(c),
         c.get('now'),
         done(c),
@@ -1468,9 +1490,11 @@ export function createApp(now: () => number) {
 
   // ---- Support: questions from agents and companies --------------------------------------------
 
-  app.use('/support', async (c: AppContext, next) => (can.review(role(c)) ? next() : forbidden(c)));
+  app.use('/support', async (c: AppContext, next) =>
+    may(c, 'emanet:control.review') ? next() : forbidden(c),
+  );
   app.use('/support/*', async (c: AppContext, next) =>
-    can.review(role(c)) ? next() : forbidden(c),
+    may(c, 'emanet:control.review') ? next() : forbidden(c),
   );
 
   app.get('/support', async (c) => {
@@ -1539,13 +1563,13 @@ export function createApp(now: () => number) {
   // ---- Legal holds: owner or admin only ----------------------------------------------------------
 
   app.use('/privacy/holds', async (c: AppContext, next) =>
-    can.change(role(c)) ? next() : forbidden(c),
+    may(c, 'emanet:control.change') ? next() : forbidden(c),
   );
   app.use('/privacy/holds/*', async (c: AppContext, next) =>
-    can.change(role(c)) ? next() : forbidden(c),
+    may(c, 'emanet:control.change') ? next() : forbidden(c),
   );
   app.use('/privacy/retention', async (c: AppContext, next) =>
-    can.change(role(c)) ? next() : forbidden(c),
+    may(c, 'emanet:control.change') ? next() : forbidden(c),
   );
 
   /** Where a hold form sends the person back: only to an agent's own page. */
@@ -1587,10 +1611,10 @@ export function createApp(now: () => number) {
   // ---- The sealed archive of erased data: owner or admin only -----------------------------------
 
   app.use('/privacy/archive', async (c: AppContext, next) =>
-    can.change(role(c)) ? next() : forbidden(c),
+    may(c, 'emanet:control.change') ? next() : forbidden(c),
   );
   app.use('/privacy/archive/*', async (c: AppContext, next) =>
-    can.change(role(c)) ? next() : forbidden(c),
+    may(c, 'emanet:control.change') ? next() : forbidden(c),
   );
 
   app.get('/privacy/archive', async (c) => {

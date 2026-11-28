@@ -18,6 +18,8 @@ export type AppEnv = {
     now: number;
     locale: Locale;
     role: StaffRole;
+    /** What the staff member may do here (login's authorization API). */
+    permissions: ReadonlySet<string>;
     /** Until when development mode is on, or null. */
     dev: number | null;
   };

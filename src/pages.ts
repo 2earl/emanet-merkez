@@ -543,12 +543,11 @@ function reasonList(id: string, reasons: [string, string][]): string {
 export function reviewDetail(
   nav: Nav,
   r: ReviewDetail,
-  role: StaffRole,
+  changeAllowed: boolean,
   fresh: boolean,
   errorText: string | null,
 ): string {
   const kind = r.item.kind;
-  const changeAllowed = role === 'owner' || role === 'admin';
   let body: string;
   if (kind === 'delivery') {
     const claim = r.claim;

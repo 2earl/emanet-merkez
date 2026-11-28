@@ -45,6 +45,13 @@
     { "binding": "AUTH_SERVER", "service": "login" },
     // Who is 2earl staff, and in which role, read on every request (login DESIGN §4.29).
     { "binding": "STAFF", "service": "login", "entrypoint": "StaffDirectory" },
+    // What each staff member may do here (login docs/AUTHORIZATION.md): Emanet's permissions only.
+    {
+      "binding": "AUTHZ",
+      "service": "login",
+      "entrypoint": "Authorization",
+      "props": { "service": "emanet" },
+    },
     // Emanet's data and rules, as staff may change them (emanet-core).
     { "binding": "CORE", "service": "emanet-core", "entrypoint": "ControlApi" },
   ],
