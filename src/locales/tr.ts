@@ -18,6 +18,9 @@ export const tr: Catalog = {
   ],
   monthsShort: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
   messages: {
+    Waiting: 'Bekliyor',
+    Review: 'İncele',
+    Breadcrumb: 'Sayfa yolu',
     'Support messages to answer': 'Yanıtlanacak destek mesajları',
     'Nothing to do here. Every list is empty.': 'Burada yapılacak bir şey yok. Bütün listeler boş.',
     'Choose what to ask for, and write the agent a few words for each (5 to 300 characters).':

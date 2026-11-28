@@ -30,6 +30,7 @@ import {
   moment,
   notice,
   type Nav,
+  crumbs,
 } from './pages';
 
 export const DOCUMENT_NAME: Record<string, [string, string]> = {
@@ -281,7 +282,7 @@ export function erasePage(
   return layout(
     L('Erase personal data', 'Kişisel verileri sil'),
     { ...nav, current: 'agents' },
-    `<p class="crumbs"><a href="/agents">Agents</a> <span aria-hidden="true">/</span> <a href="${path}" translate="no">${esc(agent.legal_name ?? '—')}</a> <span aria-hidden="true">/</span> <span translate="no">${esc(L('Erase', 'Sil'))}</span></p>
+    `${crumbs([`<a href="/agents">Agents</a>`, `<a href="${path}" translate="no">${esc(agent.legal_name ?? '—')}</a>`, `<span translate="no">${esc(L('Erase', 'Sil'))}</span>`])}
      <div translate="no"><h1>${esc(L('Erase personal data', 'Kişisel verileri sil'))}</h1>
        <p class="lede">${esc(L('Carry out or refuse a request to be erased. A request is answered within thirty days (KVKK art. 13).', 'Silme talebini yerine getirin ya da reddedin. Talep otuz gün içinde yanıtlanır (KVKK m.13).'))}</p></div>
      ${error(errorText)}
@@ -323,7 +324,7 @@ export function archiveList(
     L('Sealed archive', 'Mühürlü arşiv'),
     { ...nav, current: 'privacy' },
     `${notice(noticeText)}
-     <p class="crumbs"><a href="/privacy">Privacy</a> <span aria-hidden="true">/</span> <span translate="no">${esc(L('Sealed archive', 'Mühürlü arşiv'))}</span></p>
+     ${crumbs([`<a href="/privacy">Privacy</a>`, `<span translate="no">${esc(L('Sealed archive', 'Mühürlü arşiv'))}</span>`])}
      <div translate="no">
        <h1>${esc(L('Sealed archive', 'Mühürlü arşiv'))}</h1>
        <p class="lede">${esc(L('What was erased, kept encrypted for a fixed time to answer a court, an authority or a claim. This list names nobody. Opening a record needs a written reason and is recorded.', 'Silinen veriler; mahkemeye, kuruma ya da bir uyuşmazlığa yanıt verebilmek için belirli bir süre şifreli saklanır. Bu liste kimsenin adını göstermez. Bir kaydı açmak yazılı gerekçe ister ve kaydedilir.'))}</p>
@@ -394,7 +395,7 @@ export function archiveDetail(
   return layout(
     L('Sealed record', 'Mühürlü kayıt'),
     { ...nav, current: 'privacy' },
-    `${notice(noticeText)}<p class="crumbs"><a href="/privacy">Privacy</a> <span aria-hidden="true">/</span> <a href="/privacy/archive" translate="no">${esc(L('Sealed archive', 'Mühürlü arşiv'))}</a> <span aria-hidden="true">/</span> <code translate="no">${esc(a.id.slice(0, 13))}</code></p>
+    `${notice(noticeText)}${crumbs([`<a href="/privacy">Privacy</a>`, `<a href="/privacy/archive" translate="no">${esc(L('Sealed archive', 'Mühürlü arşiv'))}</a>`, `<code translate="no">${esc(a.id.slice(0, 13))}</code>`])}
      <div translate="no"><h1>${esc(L('Sealed record', 'Mühürlü kayıt'))}</h1></div>
      ${error(errorText)}
      <div translate="no">
@@ -558,7 +559,7 @@ export function holdsPage(
     L('Legal holds', 'Yasal tutma'),
     { ...nav, current: 'privacy' },
     `${notice(noticeText)}${errorText ? error(errorText) : ''}
-     <p class="crumbs"><a href="/privacy">Privacy</a> <span aria-hidden="true">/</span> <span translate="no">${esc(L('Legal holds', 'Yasal tutma'))}</span></p>
+     ${crumbs([`<a href="/privacy">Privacy</a>`, `<span translate="no">${esc(L('Legal holds', 'Yasal tutma'))}</span>`])}
      <div translate="no">
        <h1>${esc(L('Legal holds', 'Yasal tutma'))}</h1>
        <p class="lede">${esc(L('While a dispute or an investigation is open, a hold keeps the automatic deletions away from one agent, case or company application: files, addresses, the sealed archive, and erasure itself. Placing and lifting a hold need a reason and are recorded.', 'Bir uyuşmazlık ya da soruşturma sürerken tutma, bir görevli, vaka ya da şirket başvurusunu otomatik silmelerden korur: dosyalar, adresler, mühürlü arşiv ve silmenin kendisi. Tutmayı başlatmak ve kaldırmak gerekçe ister ve kaydedilir.'))}</p>
@@ -682,7 +683,7 @@ export function retentionPage(nav: Nav, o: RetentionOverview): string {
   return layout(
     L('What is deleted when', 'Ne zaman ne silinir'),
     { ...nav, current: 'privacy' },
-    `<p class="crumbs"><a href="/privacy">Privacy</a> <span aria-hidden="true">/</span> <span translate="no">${esc(L('What is deleted when', 'Ne zaman ne silinir'))}</span></p>
+    `${crumbs([`<a href="/privacy">Privacy</a>`, `<span translate="no">${esc(L('What is deleted when', 'Ne zaman ne silinir'))}</span>`])}
      <div translate="no">
        <h1>${esc(L('What is deleted when', 'Ne zaman ne silinir'))}</h1>
        <p class="lede">${esc(L('What the nightly run deletes without anyone asking. The days come from Settings → Privacy. “Next run” is how many records are past their time right now; “Held” are past their time but kept by a legal hold.', 'Gece çalışmasının kimse istemeden sildikleri. Gün sayıları Ayarlar → Gizlilik’ten gelir. “Sonraki çalışma”, süresi şu an dolmuş kayıt sayısıdır; “Tutulan”, süresi dolmuş ama yasal tutma altında kalanlardır.'))}</p>
@@ -803,7 +804,7 @@ export function supportThread(
     t.ticket.subject,
     { ...nav, current: 'support' },
     `${notice(noticeText)}${errorText ? error(errorText) : ''}
-     <p class="crumbs"><a href="/support" translate="no">${esc(L('Support', 'Destek'))}</a> <span aria-hidden="true">/</span> <span translate="no">${esc(t.ticket.subject)}</span></p>
+     ${crumbs([`<a href="/support" translate="no">${esc(L('Support', 'Destek'))}</a>`, `<span translate="no">${esc(t.ticket.subject)}</span>`])}
      <div translate="no">
        <h1>${esc(t.ticket.subject)}</h1>
        <p class="hint">${esc(who(t.ticket.requester_kind))}${t.ticket.who ? `: ${t.ticket.who}` : ''} · ${esc(category(t.ticket.category))} · ${esc(L(...TICKET_STATUS[t.ticket.status]))} · ${link}</p>
