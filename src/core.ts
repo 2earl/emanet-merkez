@@ -22,6 +22,7 @@ export interface Authorization {
   permissionsOf(query: {
     subject: { type: 'user' | 'service_account'; id: string };
     orgId?: string;
+    context?: { aal2At?: number | null; ip?: string | null };
   }): Promise<{ permissions: string[]; roles: string[]; baseRole: string | null }>;
 }
 export const authz = (env: Env): Authorization => env.AUTHZ as unknown as Authorization;
