@@ -891,7 +891,7 @@ export function createApp(now: () => number) {
       (a) => a.user_id === c.req.param('id'),
     );
     if (!agent) return notFound(c);
-    const [checks, documents, accepted, asked, activation] = await Promise.all([
+    const [checks, documents, accepted, asked, activation, holds] = await Promise.all([
       core(c.env).kycChecks(agent.user_id),
       core(c.env).agentDocuments(agent.user_id),
       core(c.env).agentAcceptance(agent.user_id),
@@ -899,7 +899,17 @@ export function createApp(now: () => number) {
       agent.status === 'kyc_pending' && !agent.erased_at
         ? core(c.env).activationChecklist(agent.user_id)
         : Promise.resolve(null),
+      can.change(role(c)) ? core(c.env).holds() : Promise.resolve(null),
     ]);
+    const hold =
+      holds?.ok === true
+        ? (holds.value.find(
+            (h) =>
+              h.subject_kind === 'agent' &&
+              h.subject_ref === agent.user_id &&
+              h.released_at === null,
+          ) ?? null)
+        : null;
     return c.html(
       pages.agentDetail(
         nav(c),
@@ -918,7 +928,13 @@ export function createApp(now: () => number) {
             accepted.ok ? accepted.value : null,
             can.change(role(c)) && fresh(c),
           ) +
-          asks.requestsPanel(agent, asked.ok ? asked.value : [], can.review(role(c)), c.get('now')),
+          asks.requestsPanel(
+            agent,
+            asked.ok ? asked.value : [],
+            can.review(role(c)),
+            c.get('now'),
+          ) +
+          asks.holdPanel(agent.user_id, hold, can.change(role(c)), fresh(c)),
       ),
       status,
     );
@@ -1451,6 +1467,15 @@ export function createApp(now: () => number) {
   app.use('/privacy/holds/*', async (c: AppContext, next) =>
     can.change(role(c)) ? next() : forbidden(c),
   );
+  app.use('/privacy/retention', async (c: AppContext, next) =>
+    can.change(role(c)) ? next() : forbidden(c),
+  );
+
+  /** Where a hold form sends the person back: only to an agent's own page. */
+  const holdReturn = (value: string | undefined, outcome: string) =>
+    value && /^\/agents\/[\w-]+$/.test(value)
+      ? `${value}?done=${outcome}`
+      : `/privacy/holds?done=${outcome}`;
 
   const showHolds = async (c: AppContext, error: string | null, status: 200 | 422 = 200) =>
     c.html(
@@ -1460,13 +1485,17 @@ export function createApp(now: () => number) {
 
   app.get('/privacy/holds', (c) => showHolds(c, null));
 
+  app.get('/privacy/retention', async (c) =>
+    c.html(asks.retentionPage(nav(c), unwrap(await core(c.env).retentionOverview()))),
+  );
+
   app.post('/privacy/holds', async (c) => {
     const denied = sensitive(c, '/privacy/holds');
     if (denied) return denied;
     const v = await formValues(c);
     const result = await core(c.env).placeHold(uid(c), v.kind ?? '', v.ref ?? '', v.reason ?? '');
     if (!result.ok) return showHolds(c, errorText(result.error), 422);
-    return c.redirect('/privacy/holds?done=hold_placed', 303);
+    return c.redirect(holdReturn(v.back, 'hold_placed'), 303);
   });
 
   app.post('/privacy/holds/:id/release', async (c) => {
@@ -1475,7 +1504,7 @@ export function createApp(now: () => number) {
     const v = await formValues(c);
     const result = await core(c.env).releaseHold(uid(c), c.req.param('id'), v.reason ?? '');
     if (!result.ok) return showHolds(c, errorText(result.error), 422);
-    return c.redirect('/privacy/holds?done=hold_released', 303);
+    return c.redirect(holdReturn(v.back, 'hold_released'), 303);
   });
 
   // ---- The sealed archive of erased data: owner or admin only -----------------------------------

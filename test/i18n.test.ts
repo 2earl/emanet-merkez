@@ -148,6 +148,7 @@ describe('Turkish', () => {
     await coreHooks().testPayoutsPending(0);
     await send('/agents/agent-1/erase/refuse', admin, { reason: 'x' });
     await get('/privacy/holds', admin);
+    await get('/privacy/retention', admin);
     await get('/privacy/archive', admin);
     await get('/privacy/archive?q=nobody', admin);
     await get('/privacy/archive?done=erased_agent', admin);

@@ -1310,3 +1310,38 @@ describe('legal holds', () => {
     ).toBe(403);
   });
 });
+
+describe('what is deleted when', () => {
+  it('shows the rules and counts to an admin only', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const page = await (await request('/privacy/retention', { headers: { Cookie: admin } })).text();
+    expect(page).toContain('What is deleted when');
+    expect(page).toContain('Debtors’ street addresses on closed cases');
+    expect(page).toContain('30 days');
+    const support = await signIn('support-1!aal2');
+    expect((await request('/privacy/retention', { headers: { Cookie: support } })).status).toBe(
+      403,
+    );
+  });
+
+  it('puts a hold from the agent’s page and comes back to it', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const before = await (await request('/agents/agent-1', { headers: { Cookie: admin } })).text();
+    expect(before).toContain('Place a legal hold');
+    const placed = await post('/privacy/holds', admin, {
+      kind: 'agent',
+      ref: 'agent-1',
+      reason: 'Savcılık 2026/9',
+      back: '/agents/agent-1',
+    });
+    expect(placed.headers.get('Location')).toBe('/agents/agent-1?done=hold_placed');
+    const held = await (await request('/agents/agent-1', { headers: { Cookie: admin } })).text();
+    expect(held).toContain('Lift the hold');
+    expect(held).toContain('Savcılık 2026/9');
+    const lifted = await post('/privacy/holds/hold-1/release', admin, {
+      reason: 'Kapandı',
+      back: 'https://evil.example/',
+    });
+    expect(lifted.headers.get('Location')).toBe('/privacy/holds?done=hold_released');
+  });
+});
