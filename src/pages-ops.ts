@@ -4,6 +4,7 @@
  * marked translate="no".
  */
 import type {
+  ActivationChecklist,
   Acceptance,
   AccountingMonth,
   AgentDocument,
@@ -540,4 +541,67 @@ export function searchPage(
        ${q.length >= 2 ? `<p class="hint">${esc(L('Looking for a vehicle, a plate or a person’s data?', 'Araç, plaka ya da bir kişinin verisini mi arıyorsunuz?'))} <a href="/privacy?q=${encodeURIComponent(q)}">${esc(L('Search the records on the Privacy page (recorded)', 'Gizlilik sayfasında kayıtlarda arayın (kaydedilir)'))}</a></p>` : ''}
      </div>`,
   );
+}
+
+// ---- Activation ------------------------------------------------------------------------------------
+
+const ACTIVATION_TEXT: Record<string, [string, string]> = {
+  application: [
+    'The application is complete: rules accepted, name, phone, IBAN, ID number, verified email.',
+    'Başvuru tam: kurallar onaylandı; ad, telefon, IBAN, kimlik numarası ve doğrulanmış e-posta var.',
+  ],
+  documents: [
+    'Both e-Devlet documents are verified and clear.',
+    'İki e-Devlet belgesi de doğrulandı ve temiz çıktı.',
+  ],
+  requests: ['Every request to the agent is settled.', 'Görevliden istenenlerin hepsi sonuçlandı.'],
+  signoffs: [
+    'The sign-offs on the Readiness page are recorded.',
+    'Hazırlık sayfasındaki onaylar kaydedildi.',
+  ],
+  video_call: [
+    'A video call passed (advised, doesn’t block).',
+    'Görüntülü görüşme başarılı (önerilir, engellemez).',
+  ],
+  iban: [
+    'The IBAN is verified (needed before the first payout, doesn’t block).',
+    'IBAN doğrulandı (ilk ödemeden önce gerekir, engellemez).',
+  ],
+};
+
+/** For an application in the identity check: what is done, what is missing, and the way to finish. */
+export function activationPanel(agent: AgentRow, list: ActivationChecklist, act: boolean): string {
+  const l = L('en', 'tr') as 'en' | 'tr';
+  const index = l === 'en' ? 0 : 1;
+  const rows = list.items
+    .map((item) => {
+      const text = ACTIVATION_TEXT[item.key]?.[index] ?? item.key;
+      const mark = item.ok ? 'check' : item.blocking ? 'alert' : 'scale';
+      const extra =
+        item.key === 'requests' && typeof item.detail === 'number' && item.detail > 0
+          ? ` ${esc(`(${String(item.detail)})`)} <a href="#requests">${esc(L('See them', 'Göster'))}</a>`
+          : item.key === 'signoffs' && Array.isArray(item.detail) && item.detail.length > 0
+            ? ` <a href="/readiness">${esc(L('Open Readiness', 'Hazırlığı aç'))}</a>: ${esc(
+                item.detail.map((key) => CHECK_TEXT[key]?.[l][0] ?? key).join(', '),
+              )}`
+            : '';
+      return `<li class="${item.ok ? 'fact-line' : item.blocking ? 'error' : 'hint'}">${icon(mark)}<span>${esc(text)}${extra}</span></li>`;
+    })
+    .join('');
+  const open = list.items.some((item) => item.key === 'signoffs' && !item.ok);
+  const finish = list.ready
+    ? act
+      ? `<form method="post" action="/agents/${agent.user_id}/status" class="stack">
+           <input type="hidden" name="status" value="active">
+           <label>${esc(L('Reason', 'Gerekçe'))} <input name="reason" required maxlength="200" value="${esc(L('video call, ID matched', 'görüntülü görüşme, kimlik eşleşti'))}"></label>
+           <div><button type="submit">${esc(L('Make the agent active', 'Görevliyi etkinleştir'))}</button></div>
+         </form>`
+      : ''
+    : `<p class="hint">${esc(L('Activation is refused until every point that blocks is met.', 'Engelleyen her madde karşılanana kadar etkinleştirme reddedilir.'))}${
+        open
+          ? ` ${esc(L('While you are only testing, an owner can switch off “Sign-offs before admitting anyone” in Settings → Operations.', 'Yalnızca deneme yapıyorsanız sahip, Ayarlar → Operasyon altında “Kabulden önce onaylar” ayarını kapatabilir.'))}`
+          : ''
+      }</p>`;
+  return `<div class="panel" translate="no"><h2>${esc(L('Before you activate', 'Etkinleştirmeden önce'))}</h2>
+    <ul class="plain">${rows}</ul>${finish}</div>`;
 }

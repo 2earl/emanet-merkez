@@ -42,8 +42,8 @@ export const tr: Catalog = {
     Accounting: 'Muhasebe',
     'Both e-Devlet documents must be verified as clear first.':
       'Önce iki e-Devlet belgesi de doğrulanıp temiz bulunmalı.',
-    'Not yet: the sign-offs on the Readiness page are missing.':
-      'Henüz değil: Hazırlık sayfasındaki onaylar eksik.',
+    'Not yet: the sign-offs on the Readiness page are missing. Record them there, or while you are only testing an owner can switch off “Sign-offs before admitting anyone” in Settings → Operations.':
+      'Henüz değil: Hazırlık sayfasındaki onaylar eksik. Onayları orada kaydedin; yalnızca deneme yapıyorsanız sahip, Ayarlar → Operasyon altında “Kabulden önce onaylar” ayarını kapatabilir.',
     'Enter who confirmed it.': 'Kimin onayladığını girin.',
     'Choose what e-Devlet showed.': 'e-Devlet’in ne gösterdiğini seçin.',
     'This document was decided already.': 'Bu belge hakkında zaten karar verilmiş.',

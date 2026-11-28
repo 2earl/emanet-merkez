@@ -94,6 +94,14 @@ function seed() {
   const t = now();
   s = {
     calls: [],
+    activation: { ready: false, items: [
+      { key: 'application', ok: true, blocking: true },
+      { key: 'documents', ok: false, blocking: true },
+      { key: 'requests', ok: false, blocking: true, detail: 2 },
+      { key: 'signoffs', ok: false, blocking: true, detail: ['legal_privacy', 'accounting_setup'] },
+      { key: 'video_call', ok: false, blocking: false },
+      { key: 'iban', ok: false, blocking: false },
+    ] },
     partners: new Map([['p-1', { id: 'p-1', org_id: 'org-1', kind: 'bank', legal_name: 'Test Bankası A.Ş.',
       vkn: '1234567890', tax_office: 'Kadıköy', kep_address: null, e_invoice: 1, status: 'active',
       reconfirm_days: 14, created_at: t - 86400 * 30, active_cases: 3, delivered_cases: 1,
@@ -398,6 +406,10 @@ export class ControlApi extends WorkerEntrypoint {
     return ok(s.videoCalls?.[agentId] ? [{ kind: 'video_call', provider: 'staff', result: s.videoCalls[agentId], reviewed_by: 'admin-1', created_at: now() }]
       : [{ kind: 'id_registry', provider: 'nvi-kps', result: 'review', reviewed_by: null, created_at: now() - 60 }]);
   }
+  async activationChecklist(agentId) {
+    log('activationChecklist', [agentId]);
+    return ok(s.activation ?? { items: [], ready: false });
+  }
   async recordVideoCall(staffId, agentId, passed) {
     log('recordVideoCall', [staffId, agentId, passed]);
     s.videoCalls = { ...(s.videoCalls ?? {}), [agentId]: passed ? 'passed' : 'failed' };
@@ -663,6 +675,7 @@ export class ControlApi extends WorkerEntrypoint {
   }
   async testCalls() { return s.calls; }
   async testReset() { seed(); }
+  async testActivation(value) { s.activation = value; }
 }
 export default { fetch() { return new Response(null, { status: 404 }); } };
 `;

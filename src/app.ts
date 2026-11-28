@@ -86,7 +86,8 @@ const ERROR_TEXT: Record<string, string> = {
   invalid_setting: 'That value isn’t allowed.',
   checklist_incomplete: 'Tick every point of the checklist before confirming.',
   documents_not_verified: 'Both e-Devlet documents must be verified as clear first.',
-  not_ready: 'Not yet: the sign-offs on the Readiness page are missing.',
+  not_ready:
+    'Not yet: the sign-offs on the Readiness page are missing. Record them there, or while you are only testing an owner can switch off “Sign-offs before admitting anyone” in Settings → Operations.',
   invalid_signer: 'Enter who confirmed it.',
   invalid_outcome: 'Choose what e-Devlet showed.',
   already_decided: 'This document was decided already.',
@@ -859,11 +860,14 @@ export function createApp(now: () => number) {
       (a) => a.user_id === c.req.param('id'),
     );
     if (!agent) return notFound(c);
-    const [checks, documents, accepted, asked] = await Promise.all([
+    const [checks, documents, accepted, asked, activation] = await Promise.all([
       core(c.env).kycChecks(agent.user_id),
       core(c.env).agentDocuments(agent.user_id),
       core(c.env).agentAcceptance(agent.user_id),
       core(c.env).agentRequests(agent.user_id),
+      agent.status === 'kyc_pending' && !agent.erased_at
+        ? core(c.env).activationChecklist(agent.user_id)
+        : Promise.resolve(null),
     ]);
     return c.html(
       pages.agentDetail(
@@ -874,12 +878,15 @@ export function createApp(now: () => number) {
         fresh(c),
         done(c),
         error,
-        ops.vettingPanel(
-          agent,
-          documents.ok ? documents.value : [],
-          accepted.ok ? accepted.value : null,
-          can.change(role(c)) && fresh(c),
-        ) +
+        (activation?.ok
+          ? ops.activationPanel(agent, activation.value, can.change(role(c)) && fresh(c))
+          : '') +
+          ops.vettingPanel(
+            agent,
+            documents.ok ? documents.value : [],
+            accepted.ok ? accepted.value : null,
+            can.change(role(c)) && fresh(c),
+          ) +
           asks.requestsPanel(agent, asked.ok ? asked.value : [], can.review(role(c)), c.get('now')),
       ),
       status,
