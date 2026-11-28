@@ -147,6 +147,8 @@ describe('Turkish', () => {
     await send('/agents/agent-1/erase', admin, { reason: 'talep', confirm: 'SİL' });
     await coreHooks().testPayoutsPending(0);
     await send('/agents/agent-1/erase/refuse', admin, { reason: 'x' });
+    await get('/support', admin);
+    await get('/support/tk-1', admin);
     await get('/privacy/holds', admin);
     await get('/privacy/retention', admin);
     await get('/privacy/archive', admin);

@@ -489,6 +489,37 @@ export interface ActivationChecklist {
   items: ActivationItem[];
   ready: boolean;
 }
+export type TicketStatus = 'open' | 'answered' | 'closed';
+export type RequesterKind = 'agent' | 'partner';
+
+export interface TicketRow {
+  id: string;
+  requester_kind: RequesterKind;
+  requester_ref: string;
+  subject: string;
+  category: string;
+  status: TicketStatus;
+  created_at: number;
+  updated_at: number;
+  first_response_at: number | null;
+  closed_at: number | null;
+  assigned_to: string | null;
+  who: string | null;
+  messages: number;
+}
+
+export interface TicketMessage {
+  id: string;
+  author_kind: 'requester' | 'staff' | 'note';
+  body: string;
+  created_at: number;
+}
+
+export interface TicketThread {
+  ticket: TicketRow;
+  messages: TicketMessage[];
+}
+
 export interface RetentionRow {
   key:
     | 'failed_evidence'
@@ -497,7 +528,8 @@ export interface RetentionRow {
     | 'partner_documents'
     | 'agent_documents'
     | 'case_places'
-    | 'archive';
+    | 'archive'
+    | 'support';
   days: number;
   due: number;
   held: number;
@@ -941,6 +973,20 @@ export interface ControlApi {
   archives(term?: string): Promise<Result<ArchiveEntry[]>>;
   holds(): Promise<Result<Hold[]>>;
   retentionOverview(): Promise<Result<RetentionOverview>>;
+  supportTickets(filter: {
+    status?: TicketStatus | 'active';
+    kind?: RequesterKind;
+    mine?: string;
+  }): Promise<Result<TicketRow[]>>;
+  supportTicket(ticketId: string): Promise<Result<TicketThread>>;
+  supportReply(
+    staffId: string,
+    ticketId: string,
+    body: string,
+    note?: boolean,
+  ): Promise<Result<null>>;
+  supportAssign(staffId: string, ticketId: string, to: string | null): Promise<Result<null>>;
+  supportClose(staffId: string, ticketId: string, closed: boolean): Promise<Result<null>>;
   placeHold(
     staffId: string,
     kind: string,

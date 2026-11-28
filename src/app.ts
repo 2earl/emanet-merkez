@@ -100,6 +100,7 @@ const ERROR_TEXT: Record<string, string> = {
     'This is under a legal hold. Lift it under Privacy → Legal holds first, and answer the request citing the hold.',
   already_held: 'It is already held.',
   invalid_hold: 'Choose what to hold.',
+  invalid_message: 'Write a message of 2 to 4000 characters.',
   duplicate_case: 'The partner already has an open case on that vehicle. Reject this one.',
   no_active_case: 'No active case on this vehicle any more.',
   no_payout_rule: 'Set the agents’ payout rule in Settings first.',
@@ -163,6 +164,11 @@ const DONE: Record<string, string> = {
   redacted: 'The addresses are erased.',
   request_opened: 'Request recorded. It must be answered within 30 days.',
   request_closed: 'Request closed.',
+  ticket_replied: 'Sent. They are emailed that an answer is waiting.',
+  ticket_noted: 'Note saved. Only staff see it.',
+  ticket_assigned: 'Saved.',
+  ticket_closed: 'Closed.',
+  ticket_reopened: 'Reopened.',
   hold_placed: 'Held. Automatic deletion leaves it alone until you lift the hold.',
   hold_released: 'Lifted. The retention rules apply again from the next run.',
   call_recorded:
@@ -199,6 +205,7 @@ const done = (c: AppContext) => DONE[c.req.query('done') ?? ''] ?? null;
 const SECTIONS = [
   '/reviews',
   '/onboarding',
+  '/support',
   '/partners',
   '/agents',
   '/money',
@@ -1456,6 +1463,76 @@ export function createApp(now: () => number) {
       const result = await run(c, v.reason ?? '');
       if (!result.ok) return showPrivacy(c, errorText(result.error), 422);
       return back(c, path === 'cases' ? 'redacted' : 'erased', v.q ?? '');
+    });
+  }
+
+  // ---- Support: questions from agents and companies --------------------------------------------
+
+  app.use('/support', async (c: AppContext, next) => (can.review(role(c)) ? next() : forbidden(c)));
+  app.use('/support/*', async (c: AppContext, next) =>
+    can.review(role(c)) ? next() : forbidden(c),
+  );
+
+  app.get('/support', async (c) => {
+    const status = c.req.query('status');
+    const kind = c.req.query('kind');
+    const mine = c.req.query('mine') === '1';
+    const statusOk = status === 'open' || status === 'answered' || status === 'closed';
+    const list = unwrap(
+      await core(c.env).supportTickets({
+        status: statusOk ? status : 'active',
+        ...(kind === 'agent' || kind === 'partner' ? { kind } : {}),
+        ...(mine ? { mine: uid(c) } : {}),
+      }),
+    );
+    return c.html(
+      asks.supportInbox(
+        nav(c),
+        list,
+        { status: statusOk ? status : 'active', kind: kind ?? '', mine },
+        uid(c),
+        c.get('now'),
+        done(c),
+      ),
+    );
+  });
+
+  const showTicket = async (c: AppContext, error: string | null, status: 200 | 422 = 200) => {
+    const found = await core(c.env).supportTicket(c.req.param('id') ?? '');
+    if (!found.ok) return notFound(c);
+    return c.html(asks.supportThread(nav(c), found.value, uid(c), error, done(c)), status);
+  };
+
+  app.get('/support/:id', (c) => showTicket(c, null));
+
+  app.post('/support/:id/reply', async (c) => {
+    const v = await formValues(c);
+    const id = c.req.param('id');
+    const result = await core(c.env).supportReply(uid(c), id, v.body ?? '', v.note === '1');
+    if (!result.ok) return showTicket(c, errorText(result.error), 422);
+    return c.redirect(
+      `/support/${id}?done=${v.note === '1' ? 'ticket_noted' : 'ticket_replied'}`,
+      303,
+    );
+  });
+
+  app.post('/support/:id/assign', async (c) => {
+    const v = await formValues(c);
+    const id = c.req.param('id');
+    const result = await core(c.env).supportAssign(uid(c), id, v.to === 'me' ? uid(c) : null);
+    if (!result.ok) return showTicket(c, errorText(result.error), 422);
+    return c.redirect(`/support/${id}?done=ticket_assigned`, 303);
+  });
+
+  for (const action of ['close', 'reopen'] as const) {
+    app.post(`/support/:id/${action}`, async (c) => {
+      const id = c.req.param('id');
+      const result = await core(c.env).supportClose(uid(c), id, action === 'close');
+      if (!result.ok) return showTicket(c, errorText(result.error), 422);
+      return c.redirect(
+        `/support/${id}?done=${action === 'close' ? 'ticket_closed' : 'ticket_reopened'}`,
+        303,
+      );
     });
   }
 
