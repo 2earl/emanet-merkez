@@ -52,6 +52,26 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 const ok = (value) => ({ ok: true, value });
 const fail = (error, detail) => (detail === undefined ? { ok: false, error } : { ok: false, error, detail });
 const now = () => Math.floor(Date.now() / 1000);
+const SPECS = {
+  claim_hours: ['search', 'hours', 24, 1, 336], reporting_hours: ['search', 'hours', 12, 1, 168],
+  cooldown_hours: ['search', 'hours', 72, 0, 2160], max_active_claims: ['search', 'count', 3, 1, 50],
+  max_evidence_per_claim: ['search', 'count', 40, 5, 200],
+  review_sla_hours: ['review', 'hours', 24, 1, 336], identity_sla_hours: ['review', 'hours', 48, 1, 336],
+  review_checklist: ['review', 'switch', 1, 0, 1],
+  agent_sla_hours: ['agents', 'hours', 72, 1, 720], strike_limit: ['agents', 'count', 3, 0, 20],
+  email_code_minutes: ['agents', 'minutes', 15, 5, 120], agent_mail: ['agents', 'switch', 1, 0, 1],
+  invitation_days: ['partners', 'days', 14, 1, 90], onboarding_sla_hours: ['partners', 'hours', 48, 1, 720],
+  expiry_warning_days: ['partners', 'days', 3, 1, 30], webhook_disable_after: ['partners', 'count', 20, 3, 200],
+  max_webhooks: ['partners', 'count', 5, 1, 20],
+  kdv_bp: ['money', 'bp', 2000, 0, 5000], invoice_days: ['money', 'days', 7, 1, 7],
+  dual_approval_kurus: ['money', 'kurus', 2500000, 0, 100000000000],
+  withholding_individual_bp: ['money', 'bp', 0, 0, 5000], withholding_sole_trader_bp: ['money', 'bp', 0, 0, 5000],
+  withholding_company_bp: ['money', 'bp', 0, 0, 5000],
+  evidence_retention_days: ['privacy', 'days', 3650, 365, 7300], failed_claim_evidence_days: ['privacy', 'days', 30, 7, 365],
+  place_retention_days: ['privacy', 'days', 30, 1, 365], abandoned_onboarding_days: ['privacy', 'days', 90, 7, 365],
+  privacy_request_days: ['privacy', 'days', 30, 1, 30],
+  alert_interval_minutes: ['operations', 'minutes', 60, 15, 1440], ops_keep_days: ['operations', 'days', 30, 7, 365],
+};
 let s;
 function seed() {
   const t = now();
@@ -64,9 +84,8 @@ function seed() {
     prices: new Map([['p-1', { list: { default_kurus: 1000000, rules: [{ make: 'Renault', fee_kurus: 1200000 }] }, from: t - 86400 }]]),
     fields: [{ id: 'f-1', partner_id: 'p-1', entity: 'case', key: 'portfolio', label_tr: 'Portföy',
       label_en: 'Portfolio', type: 'enum', enum_values: '["A","B"]', required: 0, visibility: 'partner', deprecated_at: null }],
-    settings: { claim_hours: 24, reporting_hours: 12, cooldown_hours: 72, max_active_claims: 3, kdv_bp: 2000,
-      dual_approval_kurus: 2500000, withholding_individual_bp: 0, withholding_sole_trader_bp: 0, withholding_company_bp: 0,
-      evidence_retention_days: 3650 },
+    settings: Object.fromEntries(Object.entries(SPECS).map(([key, spec]) => [key, spec[2]])),
+    settingsChanged: {},
     rule: { rule: { share_bp: 5000 }, valid_from: t - 86400 },
     agents: [{ user_id: 'agent-1', status: 'kyc_pending', legal_name: 'Ali Veli', city: 'İstanbul',
       phone: '+905321234567', iban: 'TR330006100519786457841326', tax_profile: 'individual', vkn: null,
@@ -182,10 +201,44 @@ export class ControlApi extends WorkerEntrypoint {
     return ok(null);
   }
   async settings() { return ok({ ...s.settings }); }
+  async settingsInfo() {
+    return ok(Object.entries(SPECS).map(([key, [group, unit, def, min, max]]) => ({
+      key, group, unit, default: def, min, max, value: s.settings[key],
+      updated_by: s.settingsChanged[key] ?? null, updated_at: s.settingsChanged[key] ? now() : null,
+    })));
+  }
   async setSetting(staffId, key, value) {
     log('setSetting', [staffId, key, value]);
-    if (!(key in s.settings)) return fail('invalid_setting');
+    const spec = SPECS[key];
+    if (!spec || !Number.isSafeInteger(value) || value < spec[3] || value > spec[4]) return fail('invalid_setting');
     s.settings[key] = value;
+    s.settingsChanged[key] = staffId;
+    return ok(null);
+  }
+  async resetSetting(staffId, key) {
+    log('resetSetting', [staffId, key]);
+    if (!SPECS[key]) return fail('invalid_setting');
+    s.settings[key] = SPECS[key][2];
+    delete s.settingsChanged[key];
+    return ok(null);
+  }
+  async queues() {
+    const t = now();
+    return ok([
+      { key: 'delivery', open: 2, oldest_at: t - 30 * 3600, overdue: 1, due_soon: 0, limit_seconds: 86400 },
+      { key: 'identity', open: 1, oldest_at: t - 40 * 3600, overdue: 0, due_soon: 1, limit_seconds: 172800 },
+      { key: 'agents', open: 1, oldest_at: t - 3600, overdue: 0, due_soon: 0, limit_seconds: 259200 },
+      { key: 'onboarding', open: 0, oldest_at: null, overdue: 0, due_soon: 0, limit_seconds: 172800 },
+      { key: 'privacy', open: 1, oldest_at: t - 5 * 86400, overdue: 0, due_soon: 0, limit_seconds: 2592000 },
+      { key: 'invoicing', open: 3, oldest_at: t - 6 * 86400, overdue: 0, due_soon: 3, limit_seconds: 604800 },
+    ]);
+  }
+  async returnApplication(staffId, id, reason) {
+    log('returnApplication', [staffId, id, reason]);
+    const a = s.agents.find((x) => x.user_id === id);
+    if (!a || a.status !== 'kyc_pending') return fail('agent_not_ready');
+    a.status = 'applied';
+    a.review_note = reason;
     return ok(null);
   }
   async payoutRule() { return ok(s.rule); }
@@ -225,8 +278,9 @@ export class ControlApi extends WorkerEntrypoint {
     s.reviews.delete(id);
     return ok({ case_status: 'active' });
   }
-  async confirmDelivery(staffId, claimId) {
-    log('confirmDelivery', [staffId, claimId]);
+  async confirmDelivery(staffId, claimId, checks = []) {
+    log('confirmDelivery', [staffId, claimId, checks]);
+    if (s.settings.review_checklist === 1 && checks.length !== 4) return fail('checklist_incomplete');
     for (const [id, r] of s.reviews) if (r.item.kind === 'delivery' && r.claim.id === claimId) {
       s.reviews.delete(id);
       return ok({ cases: r.cases.map((c) => c.id), payout: { id: 'po-new', gross_kurus: 600000, net_kurus: 600000 } });

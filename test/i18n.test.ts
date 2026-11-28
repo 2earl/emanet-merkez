@@ -59,6 +59,10 @@ describe('Turkish', () => {
         '/money?partner=p-1',
         '/money/ledger',
         '/settings',
+        '/guide',
+        '/guide/overview',
+        '/guide/settings',
+        '/guide/glossary',
         '/audit',
         '/privacy',
         '/privacy?q=34ABC123',
@@ -80,6 +84,11 @@ describe('Turkish', () => {
     for (const done of ['invoiced', 'received', 'approved', 'waiting', 'sent', 'numbered'])
       await get(`/money?done=${done}`, admin);
     await get('/settings?done=saved', admin);
+    await get('/settings?done=reset', admin);
+    await send('/settings', admin, { strike_limit: '99' });
+    await send('/settings/reset', admin, { key: 'nope' });
+    await send('/reviews/r-del/deliver', admin, { check_plate_matches: '1' });
+    await get('/agents/agent-1?done=agent_returned', admin);
     await get('/agents?done=saved', admin);
     await get('/agents/agent-1?done=saved', admin);
     await get('/agents/agent-1', old);

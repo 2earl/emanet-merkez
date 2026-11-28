@@ -18,6 +18,20 @@ export const tr: Catalog = {
   ],
   monthsShort: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
   messages: {
+    Work: 'İş',
+    Records: 'Kayıtlar',
+    Control: 'Denetim ve ayar',
+    Help: 'Yardım',
+    Handbook: 'El kitabı',
+    Queues: 'Kuyruklar',
+    'To do': 'Yapılacaklar',
+    'Tick every point of the checklist before confirming.':
+      'Onaylamadan önce kontrol listesindeki her maddeyi işaretleyin.',
+    'Back to the default.': 'Varsayılana döndürüldü.',
+    'Sent back. The applicant is told what to correct.':
+      'Geri gönderildi. Başvurana neyi düzelteceği bildirildi.',
+    'Suspending or banning ends the agent’s open claims at once. The agent is emailed the decision and your reason.':
+      'Askıya alma veya yasaklama görevlinin açık üstlenmelerini hemen sonlandırır. Karar ve gerekçeniz görevliye e-postayla bildirilir.',
     '{0} · Emanet Merkez': '{0} · Emanet Merkez',
     'Emanet Merkez': 'Emanet Merkez',
     'Staff console': 'Personel konsolu',

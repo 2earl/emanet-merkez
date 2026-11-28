@@ -131,9 +131,23 @@ describe('reviews', () => {
     expect(oldPage).toContain('Confirm it’s you');
     expect(await callsOf('confirmDelivery')).toEqual([]);
     const admin = await signIn('admin-1!aal2');
-    const response = await post('/reviews/r-del/deliver', admin);
+    // Not without the checklist: every point ticked.
+    const partly = await post('/reviews/r-del/deliver', admin, { check_plate_matches: '1' });
+    expect(partly.status).toBe(422);
+    expect(await partly.text()).toContain('Tick every point of the checklist');
+    const checks = {
+      check_plate_matches: '1',
+      check_custody_receipt: '1',
+      check_place_plausible: '1',
+      check_photos_original: '1',
+    };
+    const response = await post('/reviews/r-del/deliver', admin, checks);
     expect(response.headers.get('Location')).toBe('/reviews?done=delivered');
-    expect(await callsOf('confirmDelivery')).toEqual([['admin-1', 'cl-1']]);
+    expect((await callsOf('confirmDelivery')).at(-1)).toEqual([
+      'admin-1',
+      'cl-1',
+      ['plate_matches', 'custody_receipt', 'place_plausible', 'photos_original'],
+    ]);
   });
 
   it('shows what to look at twice, and doesn’t accept a delivery with a reason', async () => {
@@ -472,6 +486,105 @@ describe('settings', () => {
     ]);
     const bad = await post('/settings', cookie, { claim_hours: '0' });
     expect(bad.status).toBe(422);
+  });
+
+  it('shows every setting with its explanation, default and range, grouped', async () => {
+    const cookie = await signIn('admin-1!aal2');
+    const page = await (await request('/settings', { headers: { Cookie: cookie } })).text();
+    for (const group of [
+      'search',
+      'review',
+      'agents',
+      'partners',
+      'money',
+      'privacy',
+      'operations',
+    ])
+      expect(page).toContain(`id="g-${group}"`);
+    expect(page).toContain('id="s-strike_limit"');
+    expect(page).toContain('Default: 24 hours · Allowed: 1 – 336 hours');
+    expect(page).toContain('name="review_checklist"');
+    // The legal ceiling is in the range the page shows.
+    expect(page).toContain('Default: 30 days · Allowed: 1 – 30 days');
+  });
+
+  it('saves one group without touching the others, switches included, and resets to the default', async () => {
+    const cookie = await signIn('admin-1!aal2');
+    const saved = await post('/settings', cookie, { strike_limit: '5', agent_mail: '0' });
+    expect(saved.headers.get('Location')).toBe('/settings?done=saved');
+    expect(await callsOf('setSetting')).toEqual([
+      ['admin-1', 'strike_limit', 5],
+      ['admin-1', 'agent_mail', 0],
+    ]);
+    const page = await (await request('/settings', { headers: { Cookie: cookie } })).text();
+    expect(page).toContain('form="reset-strike_limit"');
+    const reset = await post('/settings/reset', cookie, { key: 'strike_limit' });
+    expect(reset.headers.get('Location')).toBe('/settings?done=reset#s-strike_limit');
+    expect(await callsOf('resetSetting')).toEqual([['admin-1', 'strike_limit']]);
+    expect((await post('/settings/reset', cookie, { key: 'nope' })).status).toBe(422);
+    // Out of range is refused with the setting's name.
+    const high = await post('/settings', cookie, { privacy_request_days: '45' });
+    expect(high.status).toBe(422);
+    expect(await high.text()).toContain('Answer a data subject’s request within');
+    // Support can read, not change.
+    const support = await signIn('support-1!aal2');
+    expect((await post('/settings/reset', support, { key: 'strike_limit' })).status).toBe(403);
+  });
+});
+
+describe('the handbook', () => {
+  it('lists its chapters and serves each in both languages with live values', async () => {
+    const cookie = await signIn('support-1!aal2');
+    const index = await (await request('/guide', { headers: { Cookie: cookie } })).text();
+    const slugs = [...index.matchAll(/href="\/guide\/([a-z]+)"/g)].map((m) => m[1]);
+    expect(new Set(slugs).size).toBeGreaterThanOrEqual(10);
+    for (const slug of new Set(slugs)) {
+      const en = await request(`/guide/${String(slug)}`, { headers: { Cookie: cookie } });
+      expect(en.status, slug).toBe(200);
+      const text = await en.text();
+      // No placeholder left unfilled.
+      expect(text, slug).not.toMatch(/\{\{[a-z_]+\}\}/);
+      const tr = await request(`/guide/${String(slug)}`, {
+        headers: { Cookie: cookie, 'Accept-Language': 'tr' },
+      });
+      expect(await tr.text(), slug).not.toMatch(/\{\{[a-z_]+\}\}/);
+    }
+    const agents = await (await request('/guide/agents', { headers: { Cookie: cookie } })).text();
+    expect(agents).toContain('<strong class="live">24 hours</strong>');
+    const reference = await (
+      await request('/guide/settings', { headers: { Cookie: cookie } })
+    ).text();
+    expect(reference).toContain('<code>webhook_disable_after</code>');
+    expect((await request('/guide/nope', { headers: { Cookie: cookie } })).status).toBe(404);
+    // Staff only.
+    expect((await request('/guide')).status).not.toBe(200);
+  });
+});
+
+describe('work queues and applications', () => {
+  it('shows each queue against its deadline on Today', async () => {
+    const cookie = await signIn('support-1!aal2');
+    const page = await (await request('/', { headers: { Cookie: cookie } })).text();
+    expect(page).toContain('class="queue late"');
+    expect(page).toContain('1 overdue');
+    expect(page).toContain('class="queue soon"');
+    expect(page).toContain('Nothing waiting');
+  });
+
+  it('sends an application back with what to correct', async () => {
+    const cookie = await signIn('admin-1!aal2');
+    expect((await post('/agents/agent-1/return', cookie, { reason: ' ' })).status).toBe(422);
+    const response = await post('/agents/agent-1/return', cookie, {
+      reason: 'The IBAN is not in your own name.',
+    });
+    expect(response.headers.get('Location')).toBe('/agents/agent-1?done=agent_returned');
+    expect(await callsOf('returnApplication')).toEqual([
+      ['admin-1', 'agent-1', 'The IBAN is not in your own name.'],
+    ]);
+    const page = await (await request('/agents/agent-1', { headers: { Cookie: cookie } })).text();
+    expect(page).toContain('Sent back for correction:');
+    const support = await signIn('support-1!aal2');
+    expect((await post('/agents/agent-1/return', support, { reason: 'x' })).status).toBe(403);
   });
 
   it('saves a payout rule with a share or a fixed amount, not both', async () => {

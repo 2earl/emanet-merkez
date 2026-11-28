@@ -3,6 +3,8 @@
  * console uses it, and with login's StaffDirectory. The core is the source of truth.
  */
 
+import type { SettingGroup, SettingKey, SettingUnit } from './settings-text';
+
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string; detail?: string };
 
 export type StaffRole = 'owner' | 'admin' | 'support';
@@ -112,6 +114,8 @@ export interface AgentRow {
   /** 1: an ID number is on record (as a keyed hash; the number isn't kept). */
   id_given?: number;
   birth_year?: number | null;
+  /** What staff asked the applicant to correct, while the application is back with them. */
+  review_note?: string | null;
 }
 
 export interface PayoutRow {
@@ -341,19 +345,40 @@ export interface BalanceRow {
   credit_kurus: number;
 }
 
-export type Settings = Record<
-  | 'claim_hours'
-  | 'reporting_hours'
-  | 'cooldown_hours'
-  | 'max_active_claims'
-  | 'kdv_bp'
-  | 'dual_approval_kurus'
-  | 'withholding_individual_bp'
-  | 'withholding_sole_trader_bp'
-  | 'withholding_company_bp'
-  | 'evidence_retention_days',
-  number
->;
+export type Settings = Record<SettingKey, number>;
+
+/** One setting as the core reports it. */
+export interface SettingInfo {
+  key: SettingKey;
+  value: number;
+  default: number;
+  min: number;
+  max: number;
+  unit: SettingUnit;
+  group: SettingGroup;
+  updated_by: string | null;
+  updated_at: number | null;
+}
+
+export type QueueKey = 'delivery' | 'identity' | 'agents' | 'onboarding' | 'privacy' | 'invoicing';
+
+/** One of the queues staff work through, measured against its service level. */
+export interface Queue {
+  key: QueueKey;
+  open: number;
+  oldest_at: number | null;
+  overdue: number;
+  due_soon: number;
+  limit_seconds: number;
+}
+
+/** What staff tick before a delivery is confirmed (emanet-core's DELIVERY_CHECKS). */
+export const DELIVERY_CHECKS = [
+  'plate_matches',
+  'custody_receipt',
+  'place_plausible',
+  'photos_original',
+] as const;
 
 export interface PayoutRule {
   share_bp?: number;
@@ -571,6 +596,7 @@ export interface ControlApi {
   confirmDelivery(
     staffId: string,
     claimId: string,
+    checks?: string[],
   ): Promise<
     Result<{ cases: string[]; payout: { id: string; gross_kurus: number; net_kurus: number } }>
   >;
@@ -618,6 +644,13 @@ export interface ControlApi {
   ): Promise<Result<{ file_ref: string; bucket: 'evidence' | 'documents' }[]>>;
   filesErased(refs: string[]): Promise<Result<{ erased: number }>>;
   ops(): Promise<Result<OpsOverview>>;
+  /** The work waiting for staff, each queue against its service level. */
+  queues(): Promise<Result<Queue[]>>;
+  /** Every setting with its value, default, range, unit, group and last change. */
+  settingsInfo(): Promise<Result<SettingInfo[]>>;
+  resetSetting(staffId: string, key: keyof Settings): Promise<Result<null>>;
+  /** Sends a waiting application back to the applicant with what to correct. */
+  returnApplication(staffId: string, agentId: string, reason: string): Promise<Result<null>>;
   heartbeat(name: string, error: string | null): Promise<void>;
   audit(
     staffId: string,
