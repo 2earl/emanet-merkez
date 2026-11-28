@@ -219,6 +219,8 @@ export interface Today {
   payoutsApproved: number;
   agentsWaiting: number;
   onboardingsSigned: number;
+  /** Support messages waiting for staff. */
+  supportWaiting?: number;
 }
 
 const REVIEW_LABEL: Record<ReviewItem['kind'], string> = {
@@ -327,8 +329,11 @@ export function today(
   /** More to do, drawn elsewhere: answers from agents (src/pages-requests.ts). */
   extra = '',
 ): string {
-  const tile = (href: string, count: number, label: string, glyph: IconName) =>
-    `<a href="${href}">${icon(glyph)}<strong translate="no">${String(count)}</strong><span>${label}</span></a>`;
+  // What has work in it comes first; empty tiles stay, dimmed, so the layout is familiar.
+  const tile = (href: string, count: number, label: string, glyph: IconName) => ({
+    count,
+    html: `<a href="${href}"${count === 0 ? ' class="zero"' : ''}>${icon(glyph)}<strong translate="no">${String(count)}</strong><span>${label}</span></a>`,
+  });
   const late = t.uninvoiced.filter((u) => now - u.oldest_delivery > (INVOICE_DAYS - 2) * 86_400);
   const overdue = queues.reduce((sum, q) => sum + q.overdue, 0);
   const summary =
@@ -345,15 +350,31 @@ export function today(
      ${ready === false ? `<a class="banner" href="/readiness" translate="no">${icon('scale')}<span><strong>${esc(L('Not ready for the first customer yet.', 'İlk müşteri için henüz hazır değil.'))}</strong> ${esc(L('Sign-offs or set-up are missing: companies can’t be approved and agents can’t be activated. See what is open.', 'Onaylar ya da kurulum eksik: kurum onaylanamaz, görevli etkinleştirilemez. Açık olanlara bakın.'))}</span>${icon('arrow')}</a>` : ''}
      ${queues.length > 0 ? `<h2>Queues</h2>${queueCards(queues, now)}` : ''}
      <h2>To do</h2>
-     <div class="counts">
-       ${tile('/reviews?kind=delivery', t.reviews.delivery, REVIEW_LABEL.delivery, 'camera')}
-       ${tile('/reviews?kind=missing_vin', t.reviews.missing_vin, REVIEW_LABEL.missing_vin, 'car')}
-       ${tile('/reviews?kind=plate_conflict', t.reviews.plate_conflict, REVIEW_LABEL.plate_conflict, 'alert')}
-       ${tile('/onboarding?status=signed', t.onboardingsSigned, 'Companies to approve', 'onboarding')}
-       ${tile('/agents?status=kyc_pending', t.agentsWaiting, 'Agents waiting for KYC', 'agents')}
-       ${tile('/money#payouts', t.payoutsReady, 'Payouts to order', 'wallet')}
-       ${tile('/money#payouts', t.payoutsApproved, 'Payouts to send', 'money')}
-     </div>
+     ${(() => {
+       const tiles = [
+         tile('/reviews?kind=delivery', t.reviews.delivery, REVIEW_LABEL.delivery, 'camera'),
+         tile('/reviews?kind=missing_vin', t.reviews.missing_vin, REVIEW_LABEL.missing_vin, 'car'),
+         tile(
+           '/reviews?kind=plate_conflict',
+           t.reviews.plate_conflict,
+           REVIEW_LABEL.plate_conflict,
+           'alert',
+         ),
+         tile('/support?status=open', t.supportWaiting ?? 0, 'Support messages to answer', 'mail'),
+         tile(
+           '/onboarding?status=signed',
+           t.onboardingsSigned,
+           'Companies to approve',
+           'onboarding',
+         ),
+         tile('/agents?status=kyc_pending', t.agentsWaiting, 'Agents waiting for KYC', 'agents'),
+         tile('/money#payouts', t.payoutsReady, 'Payouts to order', 'wallet'),
+         tile('/money#payouts', t.payoutsApproved, 'Payouts to send', 'money'),
+       ];
+       const busy = tiles.filter((x) => x.count > 0);
+       const idle = tiles.filter((x) => x.count === 0);
+       return `${busy.length === 0 ? '<p class="panel">Nothing to do here. Every list is empty.</p>' : ''}<div class="counts">${[...busy, ...idle].map((x) => x.html).join('')}</div>`;
+     })()}
      ${extra}
      <h2>To invoice</h2>
      ${
