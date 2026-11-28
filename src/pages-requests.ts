@@ -18,6 +18,7 @@ import type {
   TicketThread,
   ErasureOverview,
 } from './core';
+import { fileSize } from './attachments';
 import { icon } from './icons';
 import {
   L,
@@ -951,6 +952,18 @@ export function supportThread(
       return `<li class="card ${m.author_kind === 'note' ? 'note' : ''}">
         <div class="card-head"><strong>${esc(label)}</strong><span class="hint">${moment(m.created_at)}</span></div>
         <p style="white-space:pre-wrap">${data(m.body)}</p>
+        ${
+          m.attachments?.length
+            ? `<ul class="files">${m.attachments
+                .map((f) => {
+                  const href = `/support/${attr(t.ticket.id)}/files/${attr(f.id)}`;
+                  return f.content_type.startsWith('image/')
+                    ? `<li><a href="${href}" target="_blank" rel="noopener"><img src="${href}" alt="${attr(f.name)}" loading="lazy"></a></li>`
+                    : `<li><a class="file" href="${href}">${icon('file')}<span>${data(f.name)}</span> <span class="hint">${esc(fileSize(f.size))}</span></a></li>`;
+                })
+                .join('')}</ul>`
+            : ''
+        }
       </li>`;
     })
     .join('');
@@ -970,8 +983,10 @@ export function supportThread(
        ${
          open
            ? `<div id="reply">${saved}</div>
-              <form method="post" action="/support/${attr(t.ticket.id)}/reply" class="stack">
+              <form method="post" action="/support/${attr(t.ticket.id)}/reply" class="stack" enctype="multipart/form-data">
                 <label>${esc(L('Your reply', 'Yanıtınız'))} <textarea name="body" required minlength="2" maxlength="4000" rows="${draft ? '10' : '6'}">${esc(draft)}</textarea></label>
+                <label>${esc(L('Photos or PDF files (optional)', 'Fotoğraf ya da PDF dosyaları (isteğe bağlı)'))} <input type="file" name="files" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf">
+                  <span class="hint">${esc(L('Up to three, 10 MB each. On an internal note they stay internal.', 'En çok üç, her biri 10 MB. İç notta eklenenler içeride kalır.'))}</span></label>
                 <div class="actions">
                   <button type="submit" name="note" value="">${esc(L('Send to them', 'Onlara gönder'))}</button>
                   <button class="secondary" type="submit" name="note" value="1">${esc(L('Save as internal note', 'İç not olarak kaydet'))}</button>

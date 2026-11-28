@@ -1383,6 +1383,35 @@ describe('support inbox', () => {
     expect(company).not.toContain('alacaklı ödemesini yaptıktan sonra');
   });
 
+  it('shows a requester’s file and lets staff attach one to a reply', async () => {
+    const staff = await signIn('support-1!aal2');
+    const page = await (await request('/support/tk-1', { headers: { Cookie: staff } })).text();
+    expect(page).toContain('href="/support/tk-1/files/f-1"');
+    expect(page).toContain('240 KB');
+    expect(page).toContain('enctype="multipart/form-data"');
+    expect((await request('/support/tk-2/files/f-1', { headers: { Cookie: staff } })).status).toBe(
+      404,
+    );
+    const form = new FormData();
+    form.set('body', 'Ekteki adımları izleyin.');
+    form.set('note', '');
+    form.append(
+      'files',
+      new File([new TextEncoder().encode('%PDF-1.4 x')], 'adimlar.pdf', {
+        type: 'application/pdf',
+      }),
+    );
+    const sent = await request('/support/tk-1/reply', {
+      method: 'POST',
+      headers: { Cookie: staff, Origin: ORIGIN },
+      body: form,
+    });
+    expect(sent.status).toBe(303);
+    expect(await callsOf('supportReplyFiles')).toEqual([
+      ['tk-1', [['adimlar.pdf', 'application/pdf']]],
+    ]);
+  });
+
   it('lets staff add, change and delete saved replies', async () => {
     const staff = await signIn('support-1!aal2');
     const page = await (await request('/support/replies', { headers: { Cookie: staff } })).text();

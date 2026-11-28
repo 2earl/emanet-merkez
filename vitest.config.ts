@@ -121,7 +121,8 @@ function seed() {
       { id: 'tk-1', requester_kind: 'agent', requester_ref: 'agent-1', subject: 'Ödemem gelmedi', category: 'payment', status: 'open', created_at: t - 90000, updated_at: t - 90000, first_response_at: null, closed_at: null, assigned_to: null, who: 'Ali Veli', messages: 1 },
       { id: 'tk-2', requester_kind: 'partner', requester_ref: 'partner-1', subject: 'Fatura sorusu', category: 'invoice', status: 'answered', created_at: t - 5000, updated_at: t - 3000, first_response_at: t - 3000, closed_at: null, assigned_to: null, who: 'Deneme Bankası', messages: 2 },
     ],
-    ticketMessages: { 'tk-1': [{ id: 'm1', author_kind: 'requester', body: 'IBAN’ıma ödeme yok.', created_at: t - 90000 }] },
+    ticketMessages: { 'tk-1': [{ id: 'm1', author_kind: 'requester', body: 'IBAN’ıma ödeme yok.', created_at: t - 90000, attachments: [{ id: 'f-1', name: 'dekont.pdf', content_type: 'application/pdf', size: 245760 }] }] },
+    ticketFiles: { 'f-1': { ticket: 'tk-1', file_ref: 'support/00000000-0000-4000-8000-000000000001', name: 'dekont.pdf', content_type: 'application/pdf' } },
     holds: [],
     activateBlocked: null,
     activation: { ready: false, items: [
@@ -536,14 +537,19 @@ export class ControlApi extends WorkerEntrypoint {
     if (!t) return fail('not_found');
     return ok({ ticket: t, messages: s.ticketMessages?.[id] ?? [] });
   }
-  async supportReply(staffId, id, body, note) {
+  async supportReply(staffId, id, body, note, attachments) {
     log('supportReply', [staffId, id, body, Boolean(note)]);
+    if ((attachments ?? []).length) log('supportReplyFiles', [id, attachments.map((f) => [f.name, f.content_type])]);
     const t = (s.tickets ?? []).find((x) => x.id === id);
     if (!t) return fail('not_found');
     if (body.trim().length < 2) return fail('invalid_message');
     s.ticketMessages = { ...(s.ticketMessages ?? {}), [id]: [...(s.ticketMessages?.[id] ?? []), { id: 'm' + String(Math.random()), author_kind: note ? 'note' : 'staff', body, created_at: now() }] };
     if (!note) t.status = 'answered';
     return ok(null);
+  }
+  async supportAttachment(tid, fid) {
+    const f = (s.ticketFiles ?? {})[fid];
+    return f && f.ticket === tid ? ok({ file_ref: f.file_ref, name: f.name, content_type: f.content_type }) : fail('not_found');
   }
   async supportReplies() { return ok([...(s.replies ?? [])].sort((a, b) => a.position - b.position)); }
   async saveSupportReply(staffId, input) {
