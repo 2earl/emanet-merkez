@@ -795,6 +795,14 @@ export const tr: Catalog = {
     'This case is still open. Its partner changes or withdraws it; closed cases can be erased here.':
       'Bu dosya hâlâ açık. Kurum değiştirir veya geri çeker; kapalı dosyalar buradan silinebilir.',
     'Video call recorded.': 'Görüntülü görüşme kaydedildi.',
+    'Held. Automatic deletion leaves it alone until you lift the hold.':
+      'Tutuldu. Siz tutmayı kaldırana kadar otomatik silme buna dokunmaz.',
+    'Lifted. The retention rules apply again from the next run.':
+      'Kaldırıldı. Saklama kuralları bir sonraki çalışmadan itibaren yeniden uygulanır.',
+    'This is under a legal hold. Lift it under Privacy → Legal holds first, and answer the request citing the hold.':
+      'Bu, yasal tutma altında. Önce Gizlilik → Yasal tutma bölümünden kaldırın ya da talebi tutmaya dayanarak yanıtlayın.',
+    'It is already held.': 'Zaten tutuluyor.',
+    'Choose what to hold.': 'Neyin tutulacağını seçin.',
     'Video call recorded. The agent is not active yet: use “Before you activate” below.':
       'Görüntülü görüşme kaydedildi. Görevli henüz etkin değil: aşağıdaki “Etkinleştirmeden önce” bölümünü kullanın.',
     'Video call recorded and the agent is active. The agent is emailed.':

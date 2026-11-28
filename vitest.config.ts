@@ -95,6 +95,7 @@ function seed() {
   s = {
     calls: [],
     signoffsOpen: [],
+    holds: [],
     activateBlocked: null,
     activation: { ready: false, items: [
       { key: 'application', ok: true, blocking: true },
@@ -497,6 +498,23 @@ export class ControlApi extends WorkerEntrypoint {
   async erasureOverview(id) {
     return ok({ request: id === 'agent-1' && !s.erasureClosed ? { id: 'pr-5', status: 'open', received_at: now() - 86400, due_at: now() + 29 * 86400, outcome: null, closed_at: null } : null,
       blockers: { open_claims: 1, payouts_pending: s.payoutsPending ?? 0, payouts_sent: 2 } });
+  }
+  async holds() {
+    return ok(s.holds ?? []);
+  }
+  async placeHold(staffId, kind, ref, reason) {
+    log('placeHold', [staffId, kind, ref, reason]);
+    if ((s.holds ?? []).some((h) => h.subject_ref === ref && h.released_at === null)) {
+      return fail('already_held');
+    }
+    const hold = { id: 'hold-' + String((s.holds ?? []).length + 1), subject_kind: kind, subject_ref: ref, reason, set_by: 'staff:' + staffId, set_at: now(), released_by: null, released_at: null, release_reason: null };
+    s.holds = [...(s.holds ?? []), hold];
+    return ok({ id: hold.id });
+  }
+  async releaseHold(staffId, id, reason) {
+    log('releaseHold', [staffId, id, reason]);
+    s.holds = (s.holds ?? []).map((h) => (h.id === id ? { ...h, released_by: 'staff:' + staffId, released_at: now(), release_reason: reason } : h));
+    return ok(null);
   }
   async eraseAgent(staffId, id, input) {
     log('eraseAgent', [staffId, id, input]);

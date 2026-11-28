@@ -1264,3 +1264,49 @@ describe('erasing an agent and the sealed archive', () => {
     expect((await callsOf('filesErased')).at(-1)).toEqual([['agents/a-1/gone-3']]);
   });
 });
+
+describe('legal holds', () => {
+  it('lets an admin place and lift a hold with a fresh second factor, and no one else', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const empty = await (await request('/privacy/holds', { headers: { Cookie: admin } })).text();
+    expect(empty).toContain('Legal holds');
+    expect(empty).toContain('Nothing is held.');
+
+    const stale = await signIn('admin-1!old');
+    const redirected = await post('/privacy/holds', stale, {
+      kind: 'agent',
+      ref: 'agent-1',
+      reason: 'Savcılık',
+    });
+    expect(redirected.headers.get('Location')).toContain('second_factor=1');
+
+    const placed = await post('/privacy/holds', admin, {
+      kind: 'agent',
+      ref: 'agent-1',
+      reason: 'Savcılık 2026/9',
+    });
+    expect(placed.headers.get('Location')).toBe('/privacy/holds?done=hold_placed');
+    const twice = await post('/privacy/holds', admin, {
+      kind: 'agent',
+      ref: 'agent-1',
+      reason: 'again',
+    });
+    expect(twice.status).toBe(422);
+    expect(await twice.text()).toContain('already held');
+
+    const listed = await (await request('/privacy/holds', { headers: { Cookie: admin } })).text();
+    expect(listed).toContain('Savcılık 2026/9');
+    expect(listed).toContain('agent-1');
+
+    const lifted = await post('/privacy/holds/hold-1/release', admin, { reason: 'Dava kapandı' });
+    expect(lifted.headers.get('Location')).toBe('/privacy/holds?done=hold_released');
+    const after = await (await request('/privacy/holds', { headers: { Cookie: admin } })).text();
+    expect(after).toContain('Dava kapandı');
+
+    const support = await signIn('support-1!aal2');
+    expect((await request('/privacy/holds', { headers: { Cookie: support } })).status).toBe(403);
+    expect(
+      (await post('/privacy/holds', support, { kind: 'agent', ref: 'x', reason: 'abc' })).status,
+    ).toBe(403);
+  });
+});

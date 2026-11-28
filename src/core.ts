@@ -489,6 +489,18 @@ export interface ActivationChecklist {
   items: ActivationItem[];
   ready: boolean;
 }
+export interface Hold {
+  id: string;
+  subject_kind: 'agent' | 'case' | 'onboarding';
+  subject_ref: string;
+  reason: string;
+  set_by: string;
+  set_at: number;
+  released_by: string | null;
+  released_at: number | null;
+  release_reason: string | null;
+}
+
 export interface ApprovalItem {
   key: 'agreement' | 'details' | 'signoffs' | 'four_eyes';
   ok: boolean;
@@ -907,6 +919,14 @@ export interface ControlApi {
     reason: string,
   ): Promise<Result<{ agent_id: string }>>;
   archives(term?: string): Promise<Result<ArchiveEntry[]>>;
+  holds(): Promise<Result<Hold[]>>;
+  placeHold(
+    staffId: string,
+    kind: string,
+    ref: string,
+    reason: string,
+  ): Promise<Result<{ id: string }>>;
+  releaseHold(staffId: string, holdId: string, reason: string): Promise<Result<null>>;
   archiveViews(archiveId: string): Promise<Result<ArchiveView[]>>;
   openArchive(
     staffId: string,
