@@ -13,10 +13,24 @@ import type {
   Hold,
   RetentionOverview,
   RetentionRow,
+  TicketRow,
+  TicketThread,
   ErasureOverview,
 } from './core';
 import { icon } from './icons';
-import { L, attr, confirmFirst, day, error, esc, layout, moment, notice, type Nav } from './pages';
+import {
+  L,
+  attr,
+  confirmFirst,
+  data,
+  day,
+  error,
+  esc,
+  layout,
+  moment,
+  notice,
+  type Nav,
+} from './pages';
 
 export const DOCUMENT_NAME: Record<string, [string, string]> = {
   criminal_record: ['Criminal record (adli sicil kaydı)', 'Adli sicil kaydı'],
@@ -637,6 +651,12 @@ const RETENTION_TEXT: Record<RetentionRow['key'], [string, string, string, strin
     'After the case closes',
     'Vaka kapandıktan sonra',
   ],
+  support: [
+    'Support tickets',
+    'Destek talepleri',
+    'After the ticket closes',
+    'Talep kapandıktan sonra',
+  ],
   archive: [
     'Sealed archive of erased agents',
     'Silinen görevlilerin mühürlü arşivi',
@@ -668,6 +688,139 @@ export function retentionPage(nav: Nav, o: RetentionOverview): string {
        <p class="lede">${esc(L('What the nightly run deletes without anyone asking. The days come from Settings → Privacy. “Next run” is how many records are past their time right now; “Held” are past their time but kept by a legal hold.', 'Gece çalışmasının kimse istemeden sildikleri. Gün sayıları Ayarlar → Gizlilik’ten gelir. “Sonraki çalışma”, süresi şu an dolmuş kayıt sayısıdır; “Tutulan”, süresi dolmuş ama yasal tutma altında kalanlardır.'))}</p>
        <div class="table-wrap"><table><thead><tr><th>${esc(L('Data', 'Veri'))}</th><th>${esc(L('Counted from', 'Başlangıç'))}</th><th>${esc(L('Kept', 'Saklama'))}</th><th>${esc(L('Next run', 'Sonraki çalışma'))}</th><th>${esc(L('Held', 'Tutulan'))}</th></tr></thead><tbody>${rows}</tbody></table></div>
        <p class="hint">${esc(L('Files queued for deletion that storage still holds:', 'Silinmek üzere kuyruğa alınmış, depoda hâlâ duran dosya:'))} ${String(o.files_waiting)}. ${esc(L('Open legal holds:', 'Açık yasal tutma:'))} <a href="/privacy/holds">${String(o.open_holds)}</a>.</p>
+     </div>`,
+  );
+}
+
+const CATEGORY: Record<string, [string, string]> = {
+  payment: ['Payment', 'Ödeme'],
+  delivery: ['Delivery', 'Teslimat'],
+  account: ['Account', 'Hesap'],
+  technical: ['Technical', 'Teknik'],
+  other: ['Other', 'Diğer'],
+  case: ['Case', 'Vaka'],
+  invoice: ['Invoice', 'Fatura'],
+  integration: ['Integration', 'Entegrasyon'],
+};
+const category = (key: string) => {
+  const t = CATEGORY[key];
+  return t ? L(t[0], t[1]) : key;
+};
+const TICKET_STATUS: Record<TicketRow['status'], [string, string]> = {
+  open: ['Waiting for us', 'Bizi bekliyor'],
+  answered: ['Waiting for them', 'Onları bekliyor'],
+  closed: ['Closed', 'Kapalı'],
+};
+const who = (kind: TicketRow['requester_kind']) =>
+  kind === 'agent' ? L('Agent', 'Görevli') : L('Company', 'Şirket');
+
+/** The support inbox: what waits for staff first, the oldest on top. */
+export function supportInbox(
+  nav: Nav,
+  list: TicketRow[],
+  filter: { status: string; kind: string; mine: boolean },
+  staffId: string,
+  now: number,
+  noticeText: string | null,
+): string {
+  const link = (label: string, query: Record<string, string>, on: boolean) => {
+    const q = new URLSearchParams(query).toString();
+    return `<a href="/support${q ? `?${q}` : ''}"${on ? ' aria-current="page"' : ''}>${esc(label)}</a>`;
+  };
+  const filters = [
+    link(L('Active', 'Açık'), {}, filter.status === 'active' && !filter.kind && !filter.mine),
+    link(L('Waiting for us', 'Bizi bekleyen'), { status: 'open' }, filter.status === 'open'),
+    link(L('Mine', 'Benim'), { mine: '1' }, filter.mine),
+    link(L('Agents', 'Görevliler'), { kind: 'agent' }, filter.kind === 'agent'),
+    link(L('Companies', 'Şirketler'), { kind: 'partner' }, filter.kind === 'partner'),
+    link(L('Closed', 'Kapalı'), { status: 'closed' }, filter.status === 'closed'),
+  ].join(' · ');
+  const rows = list
+    .map((t) => {
+      const waiting = t.status === 'open' ? Math.max(0, now - t.updated_at) : 0;
+      const hours = Math.floor(waiting / 3600);
+      return `<tr>
+        <td><a href="/support/${attr(t.id)}">${esc(t.subject)}</a></td>
+        <td>${esc(who(t.requester_kind))}${t.who ? `: ${data(t.who)}` : ''}</td>
+        <td>${esc(category(t.category))}</td>
+        <td><span class="status ${t.status === 'answered' ? 'pending' : t.status === 'closed' ? 'expired' : 'open'}">${esc(L(...TICKET_STATUS[t.status]))}</span></td>
+        <td>${t.assigned_to ? (t.assigned_to === staffId ? esc(L('You', 'Siz')) : esc(t.assigned_to.slice(0, 8))) : '—'}</td>
+        <td class="num">${String(t.messages)}</td>
+        <td>${moment(t.updated_at)}${t.status === 'open' && hours >= 24 ? ` <span class="status expired">${String(hours)} ${esc(L('h', 'sa'))}</span>` : ''}</td>
+      </tr>`;
+    })
+    .join('');
+  return layout(
+    L('Support', 'Destek'),
+    { ...nav, current: 'support' },
+    `${notice(noticeText)}
+     <div translate="no">
+       <h1>${esc(L('Support', 'Destek'))}</h1>
+       <p class="lede">${esc(L('Questions from agents (Saha) and companies (Kurumsal). A reply emails them that an answer is waiting; the text stays here.', 'Görevlilerden (Saha) ve şirketlerden (Kurumsal) gelen sorular. Yanıt, e-postayla yalnızca cevap beklediğini bildirir; metin burada kalır.'))}</p>
+       <p class="filters">${filters}</p>
+       ${
+         list.length === 0
+           ? `<p class="panel">${esc(L('Nothing here.', 'Burada bir şey yok.'))}</p>`
+           : `<div class="table-wrap"><table><thead><tr><th>${esc(L('Subject', 'Konu'))}</th><th>${esc(L('From', 'Kimden'))}</th><th>${esc(L('Kind', 'Tür'))}</th><th>${esc(L('Status', 'Durum'))}</th><th>${esc(L('Assigned', 'Atanan'))}</th><th>${esc(L('Messages', 'Mesaj'))}</th><th>${esc(L('Updated', 'Güncelleme'))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+       }
+     </div>`,
+  );
+}
+
+export function supportThread(
+  nav: Nav,
+  t: TicketThread,
+  staffId: string,
+  errorText: string | null,
+  noticeText: string | null,
+): string {
+  const open = t.ticket.status !== 'closed';
+  const messages = t.messages
+    .map((m) => {
+      const label =
+        m.author_kind === 'staff'
+          ? L('2earl', '2earl')
+          : m.author_kind === 'note'
+            ? L('Internal note', 'İç not')
+            : who(t.ticket.requester_kind);
+      return `<li class="card ${m.author_kind === 'note' ? 'note' : ''}">
+        <div class="card-head"><strong>${esc(label)}</strong><span class="hint">${moment(m.created_at)}</span></div>
+        <p style="white-space:pre-wrap">${data(m.body)}</p>
+      </li>`;
+    })
+    .join('');
+  const link =
+    t.ticket.requester_kind === 'agent'
+      ? `<a href="/agents/${attr(t.ticket.requester_ref)}">${esc(L('Open the agent', 'Görevliyi aç'))}</a>`
+      : `<a href="/partners/${attr(t.ticket.requester_ref)}">${esc(L('Open the company', 'Şirketi aç'))}</a>`;
+  return layout(
+    t.ticket.subject,
+    { ...nav, current: 'support' },
+    `${notice(noticeText)}${errorText ? error(errorText) : ''}
+     <p class="crumbs"><a href="/support" translate="no">${esc(L('Support', 'Destek'))}</a> <span aria-hidden="true">/</span> <span translate="no">${esc(t.ticket.subject)}</span></p>
+     <div translate="no">
+       <h1>${esc(t.ticket.subject)}</h1>
+       <p class="hint">${esc(who(t.ticket.requester_kind))}${t.ticket.who ? `: ${t.ticket.who}` : ''} · ${esc(category(t.ticket.category))} · ${esc(L(...TICKET_STATUS[t.ticket.status]))} · ${link}</p>
+       <ul class="plain cards">${messages}</ul>
+       ${
+         open
+           ? `<form method="post" action="/support/${attr(t.ticket.id)}/reply" class="stack">
+                <label>${esc(L('Your reply', 'Yanıtınız'))} <textarea name="body" required minlength="2" maxlength="4000" rows="6"></textarea></label>
+                <div class="actions">
+                  <button type="submit" name="note" value="">${esc(L('Send to them', 'Onlara gönder'))}</button>
+                  <button class="secondary" type="submit" name="note" value="1">${esc(L('Save as internal note', 'İç not olarak kaydet'))}</button>
+                </div>
+              </form>`
+           : ''
+       }
+       <div class="actions">
+         ${
+           t.ticket.assigned_to === staffId
+             ? `<form method="post" action="/support/${attr(t.ticket.id)}/assign" class="inline"><input type="hidden" name="to" value=""><button class="secondary" type="submit">${esc(L('Unassign me', 'Atamayı bırak'))}</button></form>`
+             : `<form method="post" action="/support/${attr(t.ticket.id)}/assign" class="inline"><input type="hidden" name="to" value="me"><button class="secondary" type="submit">${esc(L('Take it', 'Üstüme al'))}</button></form>`
+         }
+         <form method="post" action="/support/${attr(t.ticket.id)}/${open ? 'close' : 'reopen'}" class="inline"><button class="secondary" type="submit">${esc(open ? L('Close', 'Kapat') : L('Reopen', 'Yeniden aç'))}</button></form>
+       </div>
      </div>`,
   );
 }

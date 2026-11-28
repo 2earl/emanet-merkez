@@ -95,6 +95,11 @@ function seed() {
   s = {
     calls: [],
     signoffsOpen: [],
+    tickets: [
+      { id: 'tk-1', requester_kind: 'agent', requester_ref: 'agent-1', subject: 'Ödemem gelmedi', category: 'payment', status: 'open', created_at: t - 90000, updated_at: t - 90000, first_response_at: null, closed_at: null, assigned_to: null, who: 'Ali Veli', messages: 1 },
+      { id: 'tk-2', requester_kind: 'partner', requester_ref: 'partner-1', subject: 'Fatura sorusu', category: 'invoice', status: 'answered', created_at: t - 5000, updated_at: t - 3000, first_response_at: t - 3000, closed_at: null, assigned_to: null, who: 'Deneme Bankası', messages: 2 },
+    ],
+    ticketMessages: { 'tk-1': [{ id: 'm1', author_kind: 'requester', body: 'IBAN’ıma ödeme yok.', created_at: t - 90000 }] },
     holds: [],
     activateBlocked: null,
     activation: { ready: false, items: [
@@ -499,6 +504,39 @@ export class ControlApi extends WorkerEntrypoint {
     return ok({ request: id === 'agent-1' && !s.erasureClosed ? { id: 'pr-5', status: 'open', received_at: now() - 86400, due_at: now() + 29 * 86400, outcome: null, closed_at: null } : null,
       blockers: { open_claims: 1, payouts_pending: s.payoutsPending ?? 0, payouts_sent: 2 } });
   }
+  async supportTickets(filter) {
+    log('supportTickets', [filter]);
+    const all = s.tickets ?? [];
+    return ok(all.filter((t) => (filter.status === 'active' ? t.status !== 'closed' : !filter.status || t.status === filter.status)).filter((t) => !filter.kind || t.requester_kind === filter.kind).filter((t) => !filter.mine || t.assigned_to === filter.mine));
+  }
+  async supportTicket(id) {
+    const t = (s.tickets ?? []).find((x) => x.id === id);
+    if (!t) return fail('not_found');
+    return ok({ ticket: t, messages: s.ticketMessages?.[id] ?? [] });
+  }
+  async supportReply(staffId, id, body, note) {
+    log('supportReply', [staffId, id, body, Boolean(note)]);
+    const t = (s.tickets ?? []).find((x) => x.id === id);
+    if (!t) return fail('not_found');
+    if (body.trim().length < 2) return fail('invalid_message');
+    s.ticketMessages = { ...(s.ticketMessages ?? {}), [id]: [...(s.ticketMessages?.[id] ?? []), { id: 'm' + String(Math.random()), author_kind: note ? 'note' : 'staff', body, created_at: now() }] };
+    if (!note) t.status = 'answered';
+    return ok(null);
+  }
+  async supportAssign(staffId, id, to) {
+    log('supportAssign', [staffId, id, to]);
+    const t = (s.tickets ?? []).find((x) => x.id === id);
+    if (!t) return fail('not_found');
+    t.assigned_to = to;
+    return ok(null);
+  }
+  async supportClose(staffId, id, closed) {
+    log('supportClose', [staffId, id, closed]);
+    const t = (s.tickets ?? []).find((x) => x.id === id);
+    if (!t) return fail('not_found');
+    t.status = closed ? 'closed' : 'open';
+    return ok(null);
+  }
   async retentionOverview() {
     return ok({
       rows: [
@@ -509,6 +547,7 @@ export class ControlApi extends WorkerEntrypoint {
         { key: 'agent_documents', days: 90, due: 0, held: 0 },
         { key: 'case_places', days: 30, due: 5, held: 1 },
         { key: 'archive', days: 3650, due: 0, held: 0 },
+        { key: 'support', days: 730, due: 0, held: 0 },
       ],
       files_waiting: 3,
       open_holds: 1,

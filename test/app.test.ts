@@ -1345,3 +1345,38 @@ describe('what is deleted when', () => {
     expect(lifted.headers.get('Location')).toBe('/privacy/holds?done=hold_released');
   });
 });
+
+describe('support inbox', () => {
+  it('lists tickets, answers, notes, assigns and closes', async () => {
+    const staff = await signIn('support-1!aal2');
+    const inbox = await (await request('/support', { headers: { Cookie: staff } })).text();
+    expect(inbox).toContain('Ödemem gelmedi');
+    expect(inbox).toContain('Fatura sorusu');
+    const agentsOnly = await (
+      await request('/support?kind=agent', { headers: { Cookie: staff } })
+    ).text();
+    expect(agentsOnly).toContain('Ödemem gelmedi');
+    expect(agentsOnly).not.toContain('Fatura sorusu');
+
+    const thread = await (await request('/support/tk-1', { headers: { Cookie: staff } })).text();
+    expect(thread).toContain('IBAN’ıma ödeme yok.');
+    expect(thread).toContain('Send to them');
+
+    const empty = await post('/support/tk-1/reply', staff, { body: ' ' });
+    expect(empty.status).toBe(422);
+    const sent = await post('/support/tk-1/reply', staff, { body: 'IBAN’ınızı doğruluyoruz.' });
+    expect(sent.headers.get('Location')).toBe('/support/tk-1?done=ticket_replied');
+    const noted = await post('/support/tk-1/reply', staff, { body: 'İç not', note: '1' });
+    expect(noted.headers.get('Location')).toBe('/support/tk-1?done=ticket_noted');
+    expect((await post('/support/tk-1/assign', staff, { to: 'me' })).headers.get('Location')).toBe(
+      '/support/tk-1?done=ticket_assigned',
+    );
+    expect((await post('/support/tk-1/close', staff, {})).headers.get('Location')).toBe(
+      '/support/tk-1?done=ticket_closed',
+    );
+    const closed = await (await request('/support/tk-1', { headers: { Cookie: staff } })).text();
+    expect(closed).toContain('Reopen');
+    expect(closed).not.toContain('Send to them');
+    expect((await request('/support/nope', { headers: { Cookie: staff } })).status).toBe(404);
+  });
+});

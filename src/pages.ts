@@ -60,6 +60,7 @@ export type Section =
   | 'home'
   | 'reviews'
   | 'onboarding'
+  | 'support'
   | 'partners'
   | 'agents'
   | 'money'
@@ -130,6 +131,7 @@ export function layout(title: string, nav: Nav, body: string): string {
         ${link('home', '/', 'Today', 'today')}
         ${link('reviews', '/reviews', 'Reviews', 'reviews')}
         ${link('onboarding', '/onboarding', 'Onboarding', 'onboarding')}
+        ${link('support', '/support', 'Support', 'mail')}
         ${group('Records')}
         ${link('partners', '/partners', 'Partners', 'partners')}
         ${link('agents', '/agents', 'Agents', 'agents')}
