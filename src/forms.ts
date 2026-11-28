@@ -1,5 +1,5 @@
 import type { PayoutRule, PriceList, PriceRule, Settings } from './core';
-import { SETTING_FORMS } from './pages';
+import { SETTING_UNITS } from './settings-text';
 
 /** What staff type into forms, read into the core's units: kuruş and basis points. */
 
@@ -64,15 +64,16 @@ export function parsePriceList(defaultFee: string, rules: string): Parsed<PriceL
   return { ok: true, value: { default_kurus: fallback, rules: out } };
 }
 
-/** One setting as typed in its unit (hours, a count, percent or lira) → the stored integer. */
+/** One setting as typed in its unit (hours, a count, percent, lira, on or off) → the stored integer. */
 export function parseSetting(key: keyof Settings, value: string): number | null {
-  const unit = SETTING_FORMS[key].unit;
-  if (unit === 'percent') return parsePercent(value);
-  if (unit === 'lira') return parseLira(value);
+  const unit = SETTING_UNITS[key];
+  if (unit === 'bp') return parsePercent(value);
+  if (unit === 'kurus') return parseLira(value);
   const v = value.trim();
+  if (unit === 'switch') return v === '1' ? 1 : v === '0' ? 0 : null;
   if (!/^\d{1,5}$/.test(v)) return null;
   const n = Number(v);
-  return (unit === 'hours' || unit === 'days') && n === 0 ? null : n;
+  return (unit === 'hours' || unit === 'days' || unit === 'minutes') && n === 0 ? null : n;
 }
 
 /** The payout rule form: a share or a fixed amount, with optional bounds. */

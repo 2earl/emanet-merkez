@@ -11,17 +11,15 @@ import type {
   InvoiceRow,
   PartnerRow,
   PayoutRow,
-  PayoutRule,
   PriceList,
-  Provider,
-  ProviderRecord,
   ReviewDetail,
   ReviewItem,
-  Settings,
   StaffRole,
   UninvoicedRow,
 } from './core';
+import { icon, scene, type IconName } from './icons';
 import { currentLocale, languageSwitcher } from './i18n';
+import { DELIVERY_CHECKS, type Queue, type QueueKey } from './core';
 
 /**
  * Server-rendered pages. Every dynamic value goes through `esc`, and data (names, plates, amounts)
@@ -36,6 +34,14 @@ export function esc(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+/**
+ * Text written in both languages where it is used (prose, explanations, the handbook), instead of
+ * through the sentence catalogue. Whatever shows it marks it translate="no".
+ */
+export const L = (en: string, tr: string) => (currentLocale() === 'tr' ? tr : en);
+/** The same, as an element the translator leaves alone. */
+export const both = (en: string, tr: string) => `<span translate="no">${esc(L(en, tr))}</span>`;
 
 export const data = (value: string) => `<span translate="no">${esc(value)}</span>`;
 export const attr = (value: string) => esc(value);
@@ -60,7 +66,8 @@ export type Section =
   | 'settings'
   | 'audit'
   | 'privacy'
-  | 'system';
+  | 'system'
+  | 'guide';
 
 export interface Nav {
   signedIn: boolean;
@@ -100,20 +107,26 @@ const ROLE_LABEL: Record<StaffRole, string> = {
 };
 
 export function layout(title: string, nav: Nav, body: string): string {
-  const link = (key: Section, href: string, label: string) =>
-    `<a href="${href}"${nav.current === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  const link = (key: Section, href: string, label: string, glyph: IconName) =>
+    `<a href="${href}"${nav.current === key ? ' aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span></a>`;
+  const group = (label: string) => `<span class="group">${label}</span>`;
   const sections = nav.role
     ? `<nav aria-label="Sections">
-        ${link('home', '/', 'Today')}
-        ${link('reviews', '/reviews', 'Reviews')}
-        ${link('onboarding', '/onboarding', 'Onboarding')}
-        ${link('partners', '/partners', 'Partners')}
-        ${link('agents', '/agents', 'Agents')}
-        ${link('money', '/money', 'Money')}
-        ${link('settings', '/settings', 'Settings')}
-        ${link('audit', '/audit', 'Audit')}
-        ${link('privacy', '/privacy', 'Privacy')}
-        ${link('system', '/system', 'System')}
+        ${group('Work')}
+        ${link('home', '/', 'Today', 'today')}
+        ${link('reviews', '/reviews', 'Reviews', 'reviews')}
+        ${link('onboarding', '/onboarding', 'Onboarding', 'onboarding')}
+        ${group('Records')}
+        ${link('partners', '/partners', 'Partners', 'partners')}
+        ${link('agents', '/agents', 'Agents', 'agents')}
+        ${link('money', '/money', 'Money', 'money')}
+        ${group('Control')}
+        ${link('settings', '/settings', 'Settings', 'settings')}
+        ${link('audit', '/audit', 'Audit', 'audit')}
+        ${link('privacy', '/privacy', 'Privacy', 'privacy')}
+        ${link('system', '/system', 'System', 'system')}
+        ${group('Help')}
+        ${link('guide', '/guide', 'Handbook', 'guide')}
       </nav>`
     : '';
   const who = nav.signedIn
@@ -171,6 +184,7 @@ export function home(): string {
     'Staff console',
     { signedIn: false },
     `<section class="hero">
+      ${scene('shield')}
       <h1>Emanet Merkez</h1>
       <p class="lede">The 2earl staff console for Emanet: partners, agents, reviews, invoices and payouts. Sign in with your 2earl account and its second factor.</p>
       <p><a class="button" href="/signin">Sign in with 2earl</a></p>
@@ -204,27 +218,118 @@ const REVIEW_KIND: Record<ReviewItem['kind'], string> = {
 /** Turkish law wants an invoice within seven days of the service (VUK 231/5). */
 const INVOICE_DAYS = 7;
 
-export function today(nav: Nav, t: Today, now: number): string {
-  const tile = (href: string, count: number, label: string) =>
-    `<a href="${href}"><strong translate="no">${String(count)}</strong><span>${label}</span></a>`;
+const QUEUE_TEXT: Record<QueueKey, { en: string; tr: string; href: string; icon: IconName }> = {
+  delivery: {
+    en: 'Deliveries to review',
+    tr: 'İncelenecek teslimler',
+    href: '/reviews?kind=delivery',
+    icon: 'camera',
+  },
+  identity: {
+    en: 'Vehicle-identity questions',
+    tr: 'Araç kimliği soruları',
+    href: '/reviews',
+    icon: 'car',
+  },
+  agents: {
+    en: 'Agent applications',
+    tr: 'Görevli başvuruları',
+    href: '/agents?status=kyc_pending',
+    icon: 'agents',
+  },
+  onboarding: {
+    en: 'Companies to approve',
+    tr: 'Onay bekleyen kurumlar',
+    href: '/onboarding?status=signed',
+    icon: 'onboarding',
+  },
+  privacy: {
+    en: 'Data subjects’ requests',
+    tr: 'İlgili kişi başvuruları',
+    href: '/privacy#requests',
+    icon: 'privacy',
+  },
+  invoicing: {
+    en: 'Deliveries to invoice',
+    tr: 'Faturalanacak teslimler',
+    href: '/money',
+    icon: 'invoice',
+  },
+};
+
+/** A length of time in the reader's words: 5 hours, 3 days. */
+export function lasting(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 3600) return `${String(Math.max(1, Math.round(s / 60)))} ${L('min', 'dk')}`;
+  if (s < 48 * 3600) return `${String(Math.round(s / 3600))} ${L('hours', 'saat')}`;
+  return `${String(Math.round(s / 86_400))} ${L('days', 'gün')}`;
+}
+
+/** The queues against their service levels: what waits, how long, and what is late. */
+export function queueCards(queues: Queue[], now: number): string {
+  const cards = queues
+    .map((q) => {
+      const text = QUEUE_TEXT[q.key];
+      const state = q.overdue > 0 ? 'late' : q.due_soon > 0 ? 'soon' : q.open > 0 ? 'ok' : 'clear';
+      const waited = q.oldest_at === null ? 0 : now - q.oldest_at;
+      const used =
+        q.oldest_at === null ? 0 : Math.min(100, Math.round((waited / q.limit_seconds) * 100));
+      const line =
+        q.open === 0
+          ? L('Nothing waiting', 'Bekleyen yok')
+          : q.overdue > 0
+            ? L(`${String(q.overdue)} overdue`, `${String(q.overdue)} gecikmiş`)
+            : q.due_soon > 0
+              ? L(`${String(q.due_soon)} due soon`, `${String(q.due_soon)} yaklaşıyor`)
+              : L('On time', 'Zamanında');
+      const oldest =
+        q.oldest_at === null
+          ? ''
+          : `<span class="queue-age">${esc(L(`Oldest waits ${lasting(waited)} of ${lasting(q.limit_seconds)}`, `En eski ${lasting(waited)} bekliyor; süre ${lasting(q.limit_seconds)}`))}</span>`;
+      return `<a class="queue ${state}" href="${text.href}">
+        <span class="queue-icon">${icon(text.icon)}</span>
+        <strong>${String(q.open)}</strong>
+        <span class="queue-name">${esc(L(text.en, text.tr))}</span>
+        <span class="queue-state">${esc(line)}</span>
+        <span class="meter"><span style="--used:${String(used)}%"></span><span class="visually-hidden">${esc(L(`${String(used)} percent of the time used`, `Sürenin yüzde ${String(used)} kadarı doldu`))}</span></span>
+        ${oldest}
+      </a>`;
+    })
+    .join('');
+  return `<div class="queues" translate="no">${cards}</div>`;
+}
+
+export function today(nav: Nav, t: Today, now: number, queues: Queue[] = []): string {
+  const tile = (href: string, count: number, label: string, glyph: IconName) =>
+    `<a href="${href}">${icon(glyph)}<strong translate="no">${String(count)}</strong><span>${label}</span></a>`;
   const late = t.uninvoiced.filter((u) => now - u.oldest_delivery > (INVOICE_DAYS - 2) * 86_400);
+  const overdue = queues.reduce((sum, q) => sum + q.overdue, 0);
+  const summary =
+    queues.length === 0
+      ? ''
+      : overdue > 0
+        ? `<p class="lede" translate="no">${esc(L(overdue === 1 ? 'One item is past its deadline. Take it first.' : `${String(overdue)} items are past their deadline. Take those first.`, `${String(overdue)} iş süresini aştı. Önce ${overdue === 1 ? 'onu' : 'onları'} alın.`))}</p>`
+        : `<p class="lede" translate="no">${esc(L('Everything is within its deadline.', 'Her şey süresi içinde.'))}</p>`;
   return layout(
     'Today',
     { ...nav, current: 'home' },
-    `<h1>Today</h1>
+    `<header class="page-head"><div><h1>Today</h1>${summary}</div>
+       <a class="button secondary" href="/guide/operations">${icon('guide')}<span translate="no">${esc(L('How the day runs', 'Gün nasıl yürür'))}</span></a></header>
+     ${queues.length > 0 ? `<h2>Queues</h2>${queueCards(queues, now)}` : ''}
+     <h2>To do</h2>
      <div class="counts">
-       ${tile('/reviews?kind=delivery', t.reviews.delivery, REVIEW_LABEL.delivery)}
-       ${tile('/reviews?kind=missing_vin', t.reviews.missing_vin, REVIEW_LABEL.missing_vin)}
-       ${tile('/reviews?kind=plate_conflict', t.reviews.plate_conflict, REVIEW_LABEL.plate_conflict)}
-       ${tile('/onboarding?status=signed', t.onboardingsSigned, 'Companies to approve')}
-       ${tile('/agents?status=kyc_pending', t.agentsWaiting, 'Agents waiting for KYC')}
-       ${tile('/money#payouts', t.payoutsReady, 'Payouts to order')}
-       ${tile('/money#payouts', t.payoutsApproved, 'Payouts to send')}
+       ${tile('/reviews?kind=delivery', t.reviews.delivery, REVIEW_LABEL.delivery, 'camera')}
+       ${tile('/reviews?kind=missing_vin', t.reviews.missing_vin, REVIEW_LABEL.missing_vin, 'car')}
+       ${tile('/reviews?kind=plate_conflict', t.reviews.plate_conflict, REVIEW_LABEL.plate_conflict, 'alert')}
+       ${tile('/onboarding?status=signed', t.onboardingsSigned, 'Companies to approve', 'onboarding')}
+       ${tile('/agents?status=kyc_pending', t.agentsWaiting, 'Agents waiting for KYC', 'agents')}
+       ${tile('/money#payouts', t.payoutsReady, 'Payouts to order', 'wallet')}
+       ${tile('/money#payouts', t.payoutsApproved, 'Payouts to send', 'money')}
      </div>
      <h2>To invoice</h2>
      ${
        t.uninvoiced.length === 0
-         ? '<p class="panel">Every delivered case is invoiced.</p>'
+         ? `<div class="panel empty">${scene('inbox')}<p>Every delivered case is invoiced.</p></div>`
          : `${late.length > 0 ? '<p class="error">Some deliveries are close to the seven-day invoicing limit.</p>' : ''}${uninvoicedTable(t.uninvoiced, now, false)}`
      }`,
   );
@@ -340,6 +445,72 @@ function signalsPanel(s: ReviewDetail['signals']): string {
     </dl></div>`;
 }
 
+const CHECK_TEXT: Record<(typeof DELIVERY_CHECKS)[number], { en: string; tr: string }> = {
+  plate_matches: {
+    en: 'The plate in the scene photo is this case’s plate (or the chassis number is visible and matches).',
+    tr: 'Olay yeri fotoğrafındaki plaka bu dosyanın plakası (ya da şasi numarası görünüyor ve eşleşiyor).',
+  },
+  custody_receipt: {
+    en: 'The custodian’s receipt names this vehicle and the car park, and is dated after the claim.',
+    tr: 'Yediemin makbuzu bu aracı ve otoparkı gösteriyor; tarihi üstlenmeden sonra.',
+  },
+  place_plausible: {
+    en: 'The sighting’s place and time don’t contradict the photos or the known addresses.',
+    tr: 'Görme bildiriminin yeri ve saati fotoğraflarla ve bilinen adreslerle çelişmiyor.',
+  },
+  photos_original: {
+    en: 'The photos are originals: not screenshots, not taken from elsewhere.',
+    tr: 'Fotoğraflar özgün: ekran görüntüsü veya başka yerden alınmış değil.',
+  },
+};
+
+/** What staff tick before confirming; the core refuses a confirmation without all of them. */
+function deliveryChecklist(): string {
+  return `<fieldset class="checks" translate="no"><legend>${esc(L('Before you confirm', 'Onaylamadan önce'))}</legend>${DELIVERY_CHECKS.map(
+    (check) =>
+      `<label class="check"><input type="checkbox" name="check_${check}" value="1" required> ${esc(L(CHECK_TEXT[check].en, CHECK_TEXT[check].tr))}</label>`,
+  ).join(
+    '',
+  )}<p class="hint"><a href="/guide/reviews">${esc(L('What each point means', 'Her madde ne anlama gelir'))}</a></p></fieldset>`;
+}
+
+/** Usual reasons, offered as suggestions; staff can always write their own. */
+const REFUSAL_REASONS: [string, string][] = [
+  [
+    'The plate in the photos is not this case’s plate.',
+    'Fotoğraflardaki plaka bu dosyanın plakası değil.',
+  ],
+  ['The custodian’s receipt is missing or unreadable.', 'Yediemin makbuzu eksik veya okunmuyor.'],
+  ['The receipt names a different vehicle.', 'Makbuz başka bir aracı gösteriyor.'],
+  ['The photos were taken before the claim.', 'Fotoğraflar üstlenmeden önce çekilmiş.'],
+  ['There is no police report of the seizure.', 'Yakalamaya ilişkin kolluk tutanağı yok.'],
+];
+const STATUS_REASONS: [string, string][] = [
+  ['Video call: ID card and IBAN matched.', 'Görüntülü görüşme: kimlik kartı ve IBAN eşleşti.'],
+  [
+    'The person on the call isn’t the person on the ID card.',
+    'Görüşmedeki kişi kimlik kartındaki kişi değil.',
+  ],
+  ['Repeated false delivery reports.', 'Tekrarlayan yanlış teslim bildirimleri.'],
+  [
+    'Breach of the field rules (contact with the debtor or the vehicle).',
+    'Saha kurallarının ihlali (borçluyla veya araçla temas).',
+  ],
+  ['Reinstated after review.', 'İnceleme sonrası yeniden etkinleştirildi.'],
+];
+const RETURN_REASONS: [string, string][] = [
+  [
+    'The name doesn’t match the ID card letter for letter.',
+    'Ad, kimlik kartıyla harfi harfine eşleşmiyor.',
+  ],
+  ['The IBAN is not in your own name.', 'IBAN kendi adınıza değil.'],
+  ['We couldn’t reach you at this mobile number.', 'Bu cep telefonu numarasından size ulaşamadık.'],
+];
+
+function reasonList(id: string, reasons: [string, string][]): string {
+  return `<datalist id="${id}" translate="no">${reasons.map(([en, tr]) => `<option value="${attr(L(en, tr))}"></option>`).join('')}</datalist>`;
+}
+
 export function reviewDetail(
   nav: Nav,
   r: ReviewDetail,
@@ -415,15 +586,17 @@ export function reviewDetail(
               : `${
                   cases.length > 0
                     ? `<h2>Confirm</h2>
-                       <form method="post" action="/reviews/${attr(r.item.id)}/deliver" class="actions">
-                         <button type="submit">Confirm the vehicle is in custody</button>
+                       <form method="post" action="/reviews/${attr(r.item.id)}/deliver" class="stack">
+                         ${deliveryChecklist()}
+                         <div><button type="submit">Confirm the vehicle is in custody</button></div>
                        </form>
                        <p class="hint">Every case above is closed as delivered, each partner is told and invoiced, and the agent’s payout is created.</p>`
                     : ''
                 }
                 <h2>Don’t accept</h2>
                 <form method="post" action="/reviews/${attr(r.item.id)}/dismiss" class="stack">
-                  <label>Reason for the agent <input name="reason" required maxlength="200"></label>
+                  <label>Reason for the agent <input name="reason" required maxlength="200" list="refusal-reasons"></label>
+                  ${reasonList('refusal-reasons', REFUSAL_REASONS)}
                   <label class="check"><input type="checkbox" name="strike" value="1"> Count a strike against the agent (a false or careless report).</label>
                   <p class="hint">The claim ends and these photos can’t be used again. The agent reads your reason and can’t take this vehicle again for a while. No partner is told and nothing is booked.</p>
                   <div><button class="secondary" type="submit">Don’t accept this delivery</button></div>
@@ -889,11 +1062,26 @@ export function agentDetail(
            <label>New status <select name="status">${AGENT_STATUSES.filter((s) => s !== a.status)
              .map((s) => `<option value="${s}">${AGENT_STATUS[s]}</option>`)
              .join('')}</select></label>
-           <label>Reason <input name="reason" required maxlength="200"></label>
+           <label>Reason <input name="reason" required maxlength="200" list="status-reasons"></label>
          </div>
-         <p class="hint">Suspending or banning ends the agent’s open claims at once.</p>
+         ${reasonList('status-reasons', STATUS_REASONS)}
+         <p class="hint">Suspending or banning ends the agent’s open claims at once. The agent is emailed the decision and your reason.</p>
          <div><button class="secondary" type="submit">Change status</button></div>
        </form>`
+      : '';
+  const sendBack =
+    canChange && fresh && a.status === 'kyc_pending'
+      ? `<div translate="no"><h2>${esc(L('Send back for correction', 'Düzeltme için geri gönder'))}</h2>
+         <form method="post" action="${path}/return" class="stack">
+           <label>${esc(L('What should the applicant correct?', 'Başvuran neyi düzeltmeli?'))} <input name="reason" required maxlength="300" list="return-reasons"></label>
+           ${reasonList('return-reasons', RETURN_REASONS)}
+           <p class="hint">${esc(L('The applicant is emailed your note, corrects their details and sends the application again. Nothing they entered is lost.', 'Başvurana notunuz e-postayla gider; bilgilerini düzeltip başvuruyu yeniden gönderir. Girdiği hiçbir şey kaybolmaz.'))}</p>
+           <div><button class="secondary" type="submit">${esc(L('Send back', 'Geri gönder'))}</button></div>
+         </form></div>`
+      : '';
+  const returned =
+    a.status === 'applied' && a.review_note
+      ? `<p class="notice" translate="no">${esc(L('Sent back for correction:', 'Düzeltme için geri gönderildi:'))} ${esc(a.review_note)}</p>`
       : '';
   return layout(
     'Agent',
@@ -901,6 +1089,7 @@ export function agentDetail(
     `${notice(noticeText)}
      <h1>${a.legal_name ? data(a.legal_name) : 'No name yet'} <span class="status ${a.status}">${AGENT_STATUS[a.status]}</span></h1>
      ${error(errorText)}
+     ${returned}
      <div class="panel"><dl class="facts">
        <dt>Mobile</dt><dd>${a.phone ? `<a href="tel:${attr(a.phone)}" translate="no">${esc(a.phone)}</a>` : '—'}</dd>
        <dt>Email</dt><dd>${a.email ? data(a.email) : '—'}</dd>
@@ -919,6 +1108,7 @@ export function agentDetail(
      ${needsConfirm ? confirmFirst(path) : ''}
      ${call}
      ${iban}
+     ${sendBack}
      ${status}`,
   );
 }
@@ -1370,172 +1560,5 @@ export function systemPage(nav: Nav, o: OpsOverview, now: number): string {
      </div>
      <h2>Jobs</h2>${jobs}
      <h2>Errors and warnings</h2>${events}`,
-  );
-}
-
-// ---- Settings -------------------------------------------------------------------------------------
-
-/** How each setting is shown and entered: hours, a count, a percentage or lira. */
-export const SETTING_FORMS: Record<
-  keyof Settings,
-  { label: string; unit: 'hours' | 'count' | 'percent' | 'lira' | 'days'; hint: string }
-> = {
-  claim_hours: {
-    label: 'Claim lasts',
-    unit: 'hours',
-    hint: 'How long an agent holds a vehicle before it is free for others.',
-  },
-  reporting_hours: {
-    label: 'Report a sighting within',
-    unit: 'hours',
-    hint: 'After a claim, the agent must send a located sighting within this time.',
-  },
-  cooldown_hours: {
-    label: 'Cooldown after a released claim',
-    unit: 'hours',
-    hint: 'The same agent can’t claim the same vehicle again for this long.',
-  },
-  max_active_claims: {
-    label: 'Claims an agent may hold at once',
-    unit: 'count',
-    hint: 'More would let one agent keep vehicles from others.',
-  },
-  kdv_bp: { label: 'VAT (KDV) on invoices', unit: 'percent', hint: 'The current general rate.' },
-  dual_approval_kurus: {
-    label: 'Second approval for payouts from',
-    unit: 'lira',
-    hint: 'Payouts of this amount or more need two different admins.',
-  },
-  withholding_individual_bp: {
-    label: 'Withholding for individuals',
-    unit: 'percent',
-    hint: 'Income tax withheld from payouts to agents paid as individuals, as the accountant advises.',
-  },
-  withholding_sole_trader_bp: {
-    label: 'Withholding for sole traders',
-    unit: 'percent',
-    hint: 'For agents who issue a self-employment receipt.',
-  },
-  withholding_company_bp: {
-    label: 'Withholding for companies',
-    unit: 'percent',
-    hint: 'Usually none: the company invoices Emanet.',
-  },
-  evidence_retention_days: {
-    label: 'Keep a delivery’s photos and a partner’s documents for',
-    unit: 'days',
-    hint: 'Commercial records are kept ten years (3650 days). After that the files are deleted.',
-  },
-};
-
-export function settingValue(key: keyof Settings, stored: number): string {
-  const unit = SETTING_FORMS[key].unit;
-  if (unit === 'percent') return String(stored / 100);
-  if (unit === 'lira') return liraInput(stored);
-  return String(stored);
-}
-
-export function settingsPage(
-  nav: Nav,
-  settings: Settings,
-  rule: { rule: PayoutRule; valid_from: number } | null,
-  canChange: boolean,
-  fresh: boolean,
-  noticeText: string | null,
-  errorText: string | null,
-  provider: ProviderRecord | null,
-  providerValues: Partial<Record<keyof Provider, string>> | null,
-): string {
-  const act = canChange && fresh;
-  const pv = (key: keyof Provider) =>
-    attr(
-      providerValues?.[key] ??
-        provider?.details[key] ??
-        (key === 'email' ? 'iletisim@emanet.dev' : ''),
-    );
-  const providerSection = `<h2>2earl’s company details</h2>
-     <p class="hint">The agreement companies accept names 2earl with these details. Until they are set, companies can read the agreement but not accept it. A change applies to agreements accepted from now on; accepted ones keep their text.</p>
-     ${provider ? '' : '<p class="error">Not set yet: no company can accept the agreement.</p>'}
-     ${
-       act
-         ? `<form method="post" action="/settings/provider" class="stack">
-             <label>Legal name <input name="name" required maxlength="200" value="${pv('name')}"></label>
-             <label>Registered address <input name="address" required maxlength="400" value="${pv('address')}"></label>
-             <div class="grid2">
-               <label>Tax office <input name="taxOffice" required maxlength="100" value="${pv('taxOffice')}"></label>
-               <label>Tax number (VKN) <input name="vkn" required inputmode="numeric" pattern="[0-9]{10}" maxlength="10" value="${pv('vkn')}"></label>
-               <label>MERSİS number <input name="mersis" required inputmode="numeric" pattern="[0-9]{16}" maxlength="16" value="${pv('mersis')}"></label>
-               <label>KEP address <input name="kep" type="email" required maxlength="254" value="${pv('kep')}"></label>
-               <label>Email for notices <input name="email" type="email" required maxlength="254" value="${pv('email')}"></label>
-             </div>
-             <div><button type="submit">Save company details</button></div>
-           </form>`
-         : provider
-           ? `<div class="panel"><dl class="facts">
-               <dt>Legal name</dt><dd>${data(provider.details.name)}</dd>
-               <dt>Registered address</dt><dd>${data(provider.details.address)}</dd>
-               <dt>Tax office and number</dt><dd>${data(`${provider.details.taxOffice} · ${provider.details.vkn}`)}</dd>
-               <dt>MERSİS</dt><dd>${data(provider.details.mersis)}</dd>
-               <dt>KEP</dt><dd>${data(provider.details.kep)}</dd>
-               <dt>Email for notices</dt><dd>${data(provider.details.email)}</dd>
-               <dt>Last changed</dt><dd>${day(provider.updated_at)}</dd>
-             </dl></div>`
-           : ''
-     }`;
-  const unit = { hours: 'hours', days: 'days', count: '', percent: '%', lira: '₺' } as const;
-  const rows = (Object.keys(SETTING_FORMS) as (keyof Settings)[])
-    .map((key) => {
-      const f = SETTING_FORMS[key];
-      return act
-        ? `<label>${f.label} ${unit[f.unit] ? `(${unit[f.unit]})` : ''}
-            <input name="${key}" required inputmode="decimal" value="${attr(settingValue(key, settings[key]))}">
-            <span class="hint">${f.hint}</span></label>`
-        : `<dt>${f.label}</dt><dd>${
-            f.unit === 'lira'
-              ? lira(settings[key])
-              : f.unit === 'hours'
-                ? `${data(settingValue(key, settings[key]))} hours`
-                : f.unit === 'days'
-                  ? `${data(settingValue(key, settings[key]))} days`
-                  : data(`${settingValue(key, settings[key])}${f.unit === 'percent' ? ' %' : ''}`)
-          }</dd>`;
-    })
-    .join('');
-  const r = rule?.rule;
-  const ruleText = r
-    ? r.share_bp !== undefined
-      ? `${data(`${String(r.share_bp / 100)} %`)} of the partner’s fee`
-      : `${lira(r.fixed_kurus ?? 0)} per delivery`
-    : 'None. Deliveries can’t be confirmed without a payout rule.';
-  return layout(
-    'Settings',
-    { ...nav, current: 'settings' },
-    `${notice(noticeText)}<h1>Settings</h1>
-     ${error(errorText)}
-     ${canChange && !fresh ? confirmFirst('/settings') : ''}
-     ${providerSection}
-     <h2>Rules</h2>
-     ${act ? `<form method="post" action="/settings" class="stack">${rows}<div><button type="submit">Save settings</button></div></form>` : `<div class="panel"><dl class="facts">${rows}</dl></div>`}
-     <h2>Agents’ pay</h2>
-     <div class="panel"><dl class="facts">
-       <dt>Paid per delivery</dt><dd>${ruleText}</dd>
-       ${r?.min_kurus !== undefined ? `<dt>At least</dt><dd>${lira(r.min_kurus)}</dd>` : ''}
-       ${r?.max_kurus !== undefined ? `<dt>At most</dt><dd>${lira(r.max_kurus)}</dd>` : ''}
-       <dt>Valid from</dt><dd>${day(rule?.valid_from ?? null)}</dd>
-     </dl></div>
-     ${
-       act
-         ? `<form method="post" action="/settings/payout-rule" class="stack">
-             <div class="grid2">
-               <label>Share of the fee (%) <input name="share" inputmode="decimal" value="${attr(r?.share_bp !== undefined ? String(r.share_bp / 100) : '')}"></label>
-               <label>Or a fixed amount (₺) <input name="fixed" inputmode="decimal" value="${attr(r?.fixed_kurus !== undefined ? liraInput(r.fixed_kurus) : '')}"></label>
-               <label>At least (₺) <input name="min" inputmode="decimal" value="${attr(r?.min_kurus !== undefined ? liraInput(r.min_kurus) : '')}"></label>
-               <label>At most (₺) <input name="max" inputmode="decimal" value="${attr(r?.max_kurus !== undefined ? liraInput(r.max_kurus) : '')}"></label>
-             </div>
-             <p class="hint">Fill in a share or a fixed amount, not both. A payout is never more than the partner’s fee. The new rule applies to deliveries confirmed from now on.</p>
-             <div><button type="submit">Save payout rule</button></div>
-           </form>`
-         : ''
-     }`,
   );
 }

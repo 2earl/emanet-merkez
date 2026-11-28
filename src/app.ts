@@ -13,13 +13,13 @@ import {
   startSignIn,
 } from './auth';
 import {
+  DELIVERY_CHECKS,
   can,
   core,
   staff,
   type AgentRow,
   type NewField,
   type ReviewItem,
-  type Settings,
 } from './core';
 import { parseLira, parsePayoutRule, parsePriceList, parseSetting } from './forms';
 import {
@@ -45,6 +45,8 @@ import {
 } from './i18n';
 import { registerOnboarding } from './onboarding';
 import * as pages from './pages';
+import * as more from './pages-more';
+import { SETTING_KEYS, SETTING_TEXT, type SettingKey } from './settings-text';
 
 /** Emanet Merkez: the 2earl staff console (emanet-core docs/DESIGN.md §7). */
 
@@ -70,6 +72,7 @@ const ERROR_TEXT: Record<string, string> = {
   invalid_enum_values: 'Enter the allowed values, separated by commas.',
   enum_values_without_enum: 'Allowed values are only for “one of a list”.',
   invalid_setting: 'That value isn’t allowed.',
+  checklist_incomplete: 'Tick every point of the checklist before confirming.',
   invalid_payout_rule: 'The payout rule isn’t valid.',
   case_not_pending: 'This case isn’t waiting for a review any more.',
   invalid_vin: 'The chassis number must be 17 letters and digits, without I, O or Q.',
@@ -139,6 +142,8 @@ const DONE: Record<string, string> = {
   request_closed: 'Request closed.',
   call_recorded: 'Video call recorded.',
   saved: 'Saved.',
+  reset: 'Back to the default.',
+  agent_returned: 'Sent back. The applicant is told what to correct.',
   activated: 'Activated. Its people can use Emanet Kurumsal now.',
   suspended: 'Suspended.',
   invoiced: 'Invoice issued. Send it through the e-invoice provider and record its number.',
@@ -166,6 +171,7 @@ const SECTIONS = [
   '/audit',
   '/privacy',
   '/system',
+  '/guide',
 ];
 
 export function createApp(now: () => number) {
@@ -333,13 +339,14 @@ export function createApp(now: () => number) {
   app.use('/', async (c: AppContext, next) => (c.get('session') ? staffGate(c, next) : next()));
   app.get('/', async (c) => {
     if (!c.get('session')) return c.html(pages.home());
-    const [queue, uninvoiced, ready, approved, waiting, signed] = await Promise.all([
+    const [queue, uninvoiced, ready, approved, waiting, signed, queues] = await Promise.all([
       core(c.env).reviewQueue(500),
       core(c.env).uninvoiced(),
       core(c.env).payouts('ready'),
       core(c.env).payouts('approved'),
       core(c.env).agents('kyc_pending'),
       core(c.env).onboardings('signed'),
+      core(c.env).queues(),
     ]);
     const reviews = { delivery: 0, missing_vin: 0, plate_conflict: 0 };
     for (const item of unwrap(queue)) reviews[item.kind]++;
@@ -355,8 +362,19 @@ export function createApp(now: () => number) {
           onboardingsSigned: unwrap(signed).length,
         },
         c.get('now'),
+        queues.ok ? queues.value : [],
       ),
     );
+  });
+
+  // ---- Handbook --------------------------------------------------------------------------------
+
+  app.get('/guide', (c) => c.html(more.guideIndex(nav(c))));
+
+  app.get('/guide/:slug', async (c) => {
+    const settings = await core(c.env).settingsInfo();
+    const page = more.guideChapter(nav(c), c.req.param('slug'), settings.ok ? settings.value : []);
+    return page === null ? notFound(c) : c.html(page);
   });
 
   app.get('/oauth/client.json', (c) => {
@@ -497,7 +515,9 @@ export function createApp(now: () => number) {
     const review = await core(c.env).review(c.req.param('id'));
     if (!review.ok || review.value.item.kind !== 'delivery' || !review.value.claim)
       return notFound(c);
-    const result = await core(c.env).confirmDelivery(uid(c), review.value.claim.id);
+    const v = await formValues(c);
+    const checks = DELIVERY_CHECKS.filter((check) => v[`check_${check}`] === '1');
+    const result = await core(c.env).confirmDelivery(uid(c), review.value.claim.id, checks);
     if (!result.ok)
       return showReview(
         c,
@@ -740,6 +760,17 @@ export function createApp(now: () => number) {
     return c.redirect(`/agents/${c.req.param('id')}?done=saved`, 303);
   });
 
+  /** The application goes back to the applicant with what to correct. */
+  app.post('/agents/:id/return', async (c) => {
+    const denied = sensitive(c, `/agents/${c.req.param('id')}`);
+    if (denied) return denied;
+    const v = await formValues(c);
+    if (!v.reason?.trim()) return showAgent(c, errorText('invalid_reason'), 422);
+    const result = await core(c.env).returnApplication(uid(c), c.req.param('id'), v.reason);
+    if (!result.ok) return showAgent(c, errorText(result.error), 422);
+    return c.redirect(`/agents/${c.req.param('id')}?done=agent_returned`, 303);
+  });
+
   /** Staff saw the person and their ID card on a video call. */
   app.post('/agents/:id/video-call', async (c) => {
     const denied = sensitive(c, `/agents/${c.req.param('id')}`);
@@ -885,12 +916,12 @@ export function createApp(now: () => number) {
     providerValues: Record<string, string> | null = null,
   ) => {
     const [settings, rule, provider] = await Promise.all([
-      core(c.env).settings(),
+      core(c.env).settingsInfo(),
       core(c.env).payoutRule(),
       core(c.env).provider(),
     ]);
     return c.html(
-      pages.settingsPage(
+      more.settingsPage(
         nav(c),
         unwrap(settings),
         unwrap(rule),
@@ -933,25 +964,37 @@ export function createApp(now: () => number) {
     if (denied) return denied;
     const v = await formValues(c);
     const current = unwrap(await core(c.env).settings());
-    const changes: [keyof Settings, number][] = [];
-    for (const key of Object.keys(pages.SETTING_FORMS) as (keyof Settings)[]) {
+    const label = (key: SettingKey) =>
+      SETTING_TEXT[key][c.get('locale') === 'tr' ? 'tr' : 'en'].label;
+    const changes: [SettingKey, number][] = [];
+    // Each group saves only its own fields; the rest are absent from the form.
+    for (const key of SETTING_KEYS) {
       const raw = v[key];
       if (raw === undefined) continue;
       const value = parseSetting(key, raw);
       if (value === null) {
-        return showSettings(
-          c,
-          `${errorText('invalid_setting')} (${pages.SETTING_FORMS[key].label})`,
-          422,
-        );
+        return showSettings(c, `${errorText('invalid_setting')} (${label(key)})`, 422);
       }
       if (value !== current[key]) changes.push([key, value]);
     }
     for (const [key, value] of changes) {
       const result = await core(c.env).setSetting(uid(c), key, value);
-      if (!result.ok) return showSettings(c, errorText(result.error), 422);
+      if (!result.ok) {
+        return showSettings(c, `${errorText(result.error)} (${label(key)})`, 422);
+      }
     }
     return c.redirect('/settings?done=saved', 303);
+  });
+
+  app.post('/settings/reset', async (c) => {
+    const denied = sensitive(c, '/settings');
+    if (denied) return denied;
+    const v = await formValues(c);
+    const key = SETTING_KEYS.find((k) => k === v.key);
+    if (!key) return showSettings(c, errorText('invalid_setting'), 422);
+    const result = await core(c.env).resetSetting(uid(c), key);
+    if (!result.ok) return showSettings(c, errorText(result.error), 422);
+    return c.redirect(`/settings?done=reset#s-${key}`, 303);
   });
 
   app.post('/settings/payout-rule', async (c) => {
