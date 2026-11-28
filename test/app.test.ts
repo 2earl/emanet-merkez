@@ -1350,6 +1350,7 @@ describe('support inbox', () => {
   it('lists tickets, answers, notes, assigns and closes', async () => {
     const staff = await signIn('support-1!aal2');
     const inbox = await (await request('/support', { headers: { Cookie: staff } })).text();
+    expect(inbox).toContain('waiting for us here');
     expect(inbox).toContain('Ödemem gelmedi');
     expect(inbox).toContain('Fatura sorusu');
     const agentsOnly = await (

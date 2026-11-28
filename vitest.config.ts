@@ -69,7 +69,7 @@ const SPECS = {
   withholding_individual_bp: ['money', 'bp', 0, 0, 5000], withholding_sole_trader_bp: ['money', 'bp', 0, 0, 5000],
   withholding_company_bp: ['money', 'bp', 0, 0, 5000],
   evidence_retention_days: ['privacy', 'days', 3650, 365, 7300], failed_claim_evidence_days: ['privacy', 'days', 30, 7, 365],
-  place_retention_days: ['privacy', 'days', 30, 1, 365], erasure_archive_days: ['privacy', 'days', 3650, 180, 3650], abandoned_onboarding_days: ['privacy', 'days', 90, 7, 365],
+  place_retention_days: ['privacy', 'days', 30, 1, 365], erasure_archive_days: ['privacy', 'days', 3650, 180, 3650], abandoned_onboarding_days: ['privacy', 'days', 90, 7, 365], support_retention_days: ['privacy', 'days', 730, 90, 3650],
   privacy_request_days: ['privacy', 'days', 30, 1, 30],
   alert_interval_minutes: ['operations', 'minutes', 60, 15, 1440], ops_keep_days: ['operations', 'days', 30, 7, 365],
   require_signoffs: ['operations', 'switch', 1, 0, 1],

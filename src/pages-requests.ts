@@ -757,6 +757,12 @@ export function supportInbox(
      <div translate="no">
        <h1>${esc(L('Support', 'Destek'))}</h1>
        <p class="lede">${esc(L('Questions from agents (Saha) and companies (Kurumsal). A reply emails them that an answer is waiting; the text stays here.', 'Görevlilerden (Saha) ve şirketlerden (Kurumsal) gelen sorular. Yanıt, e-postayla yalnızca cevap beklediğini bildirir; metin burada kalır.'))}</p>
+       ${(() => {
+         const open = list.filter((t) => t.status === 'open');
+         if (open.length === 0) return '';
+         const oldest = Math.floor(Math.max(...open.map((t) => now - t.updated_at), 0) / 3600);
+         return `<p class="panel">${esc(L(`${String(open.length)} waiting for us here. The oldest has waited ${String(oldest)} h.`, `Burada bizi bekleyen ${String(open.length)} mesaj var. En eskisi ${String(oldest)} saattir bekliyor.`))}</p>`;
+       })()}
        <p class="filters">${filters}</p>
        ${
          list.length === 0
