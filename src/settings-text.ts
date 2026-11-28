@@ -34,6 +34,7 @@ export const SETTING_KEYS = [
   'failed_claim_evidence_days',
   'place_retention_days',
   'erasure_archive_days',
+  'support_retention_days',
   'abandoned_onboarding_days',
   'privacy_request_days',
   'alert_interval_minutes',
@@ -88,6 +89,7 @@ export const SETTING_UNITS: Record<SettingKey, SettingUnit> = {
   failed_claim_evidence_days: 'days',
   place_retention_days: 'days',
   erasure_archive_days: 'days',
+  support_retention_days: 'days',
   abandoned_onboarding_days: 'days',
   privacy_request_days: 'days',
   alert_interval_minutes: 'minutes',
@@ -463,6 +465,16 @@ export const SETTING_TEXT: Record<SettingKey, Both<Words>> = {
     tr: {
       label: 'Kapanan dosyanın adreslerini saklama süresi',
       help: 'Dosya teslim edildikten, geri çekildikten veya süresi dolduktan bu kadar sonra açık adresleri, koordinatları ve notları silinir. İlçe ve il raporlar için kalır.',
+    },
+  },
+  support_retention_days: {
+    en: {
+      label: 'Keep a closed support message for',
+      help: 'A support message and its replies are erased this long after it closes. A legal hold on an agent keeps theirs. People write personal details in them, so shorter is safer; 730 days covers a dispute about a payment.',
+    },
+    tr: {
+      label: 'Kapanan destek mesajını saklama süresi',
+      help: 'Bir destek mesajı ve yanıtları, kapandıktan bu kadar süre sonra silinir. Görevli üzerinde yasal saklama varsa onun mesajları tutulur. İnsanlar mesajlara kişisel bilgi yazar; kısa süre daha güvenlidir. 730 gün, bir ödeme uyuşmazlığını karşılar.',
     },
   },
   abandoned_onboarding_days: {
