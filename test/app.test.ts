@@ -891,3 +891,283 @@ describe('search', () => {
     expect((await request('/search?q=ali')).status).not.toBe(200);
   });
 });
+
+describe('asking an agent for more', () => {
+  beforeEach(async () => {
+    await coreHooks().testReset();
+  });
+
+  it('shows what was asked, lets any reviewer ask, and reads only filled rows', async () => {
+    const support = await signIn('support-1!aal2');
+    const page = await (await request('/agents/agent-1', { headers: { Cookie: support } })).text();
+    expect(page).toContain('Requests to the agent');
+    expect(page).toContain('Adresinizde daire numarası eksik.');
+    expect(page).toContain('Düzelttim, No:4 D:2');
+    expect(page).toContain('Late');
+    expect(page).toContain('action="/agents/agent-1/ask"');
+    expect(page).toContain('value="document:residence_record"');
+    expect((await post('/agents/agent-1/ask', support, {})).status).toBe(422);
+    expect(
+      (await post('/agents/agent-1/ask', support, { what1: 'info:iban', note1: 'x' })).status,
+    ).toBe(422);
+    const sent = await post('/agents/agent-1/ask', support, {
+      what1: 'info:iban',
+      note1: 'IBAN kendi adınıza değil.',
+      what2: '',
+      note2: '',
+      what3: 'document:driving_licence',
+      note3: 'Sürücü belgenizin fotoğrafını yükleyin.',
+    });
+    expect(sent.headers.get('Location')).toBe('/agents/agent-1?done=asked#requests');
+    expect((await callsOf('askAgent')).at(-1)).toEqual([
+      'support-1',
+      'agent-1',
+      [
+        { kind: 'info', subject: 'iban', note: 'IBAN kendi adınıza değil.' },
+        {
+          kind: 'document',
+          subject: 'driving_licence',
+          note: 'Sürücü belgenizin fotoğrafını yükleyin.',
+        },
+      ],
+    ]);
+    // Signed out: nothing is asked.
+    await post('/agents/agent-1/ask', '', { what1: 'info:iban', note1: 'abcdef' });
+    expect(await callsOf('askAgent')).toHaveLength(3);
+  });
+
+  it('accepts an answer, asks again, withdraws, and lists answers on Today', async () => {
+    const support = await signIn('support-1!aal2');
+    const today = await (await request('/', { headers: { Cookie: support } })).text();
+    expect(today).toContain('Answers from agents');
+    expect(today).toContain('/agents/agent-1#requests');
+    expect(
+      (await post('/agents/agent-1/requests/ar-2/settle', support, { status: 'accepted' })).status,
+    ).toBe(422);
+    expect(
+      (
+        await post('/agents/agent-1/requests/ar-1/again', support, {
+          note: 'Kapı numarası da eksik.',
+        })
+      ).headers.get('Location'),
+    ).toBe('/agents/agent-1?done=asked#requests');
+    expect(
+      (
+        await post('/agents/agent-1/requests/ar-2/settle', support, { status: 'cancelled' })
+      ).headers.get('Location'),
+    ).toBe('/agents/agent-1?done=request_settled#requests');
+    // A request that belongs to another agent is not settled through this page.
+    expect(
+      (await post('/agents/other/requests/ar-1/settle', support, { status: 'cancelled' })).status,
+    ).not.toBe(303);
+  });
+});
+
+describe('erasing an agent and the sealed archive', () => {
+  beforeEach(async () => {
+    await coreHooks().testReset();
+  });
+
+  it('erases only for an admin with a fresh second factor who typed the word', async () => {
+    const support = await signIn('support-1!aal2');
+    const old = await signIn('admin-1!old');
+    const admin = await signIn('admin-1!aal2');
+    const privacy = await (await request('/privacy', { headers: { Cookie: admin } })).text();
+    expect(privacy).toContain('href="/agents/agent-1/erase"');
+    expect(privacy).toContain('href="/privacy/archive"');
+    expect(
+      await (await request('/privacy', { headers: { Cookie: support } })).text(),
+    ).not.toContain('href="/privacy/archive"');
+    const page = await (
+      await request('/agents/agent-1/erase', { headers: { Cookie: admin } })
+    ).text();
+    expect(page).toContain('What erasing does');
+    expect(page).toContain('action="/agents/agent-1/erase/refuse"');
+    expect(
+      await (await request('/agents/agent-1/erase', { headers: { Cookie: old } })).text(),
+    ).not.toContain('action="/agents/agent-1/erase"');
+    expect(
+      (await post('/agents/agent-1/erase', support, { reason: 'talep', confirm: 'SİL' })).status,
+    ).toBe(403);
+    expect(
+      (await post('/agents/agent-1/erase', old, { reason: 'talep', confirm: 'SİL' })).headers.get(
+        'Location',
+      ),
+    ).toContain('/signin?second_factor=1');
+    expect(
+      (await post('/agents/agent-1/erase', admin, { reason: 'talep', confirm: 'evet' })).status,
+    ).toBe(422);
+    expect(await callsOf('eraseAgent')).toEqual([]);
+    await coreHooks().testPayoutsPending(1);
+    const blocked = await (
+      await request('/agents/agent-1/erase', { headers: { Cookie: admin } })
+    ).text();
+    expect(blocked).toContain('Payouts are waiting');
+    expect(blocked).not.toContain('action="/agents/agent-1/erase" ');
+    expect(
+      (await post('/agents/agent-1/erase', admin, { reason: 'talep', confirm: 'SİL' })).status,
+    ).toBe(422);
+    await coreHooks().testPayoutsPending(0);
+    const done = await post('/agents/agent-1/erase', admin, {
+      reason: 'İlgili kişinin talebi',
+      confirm: 'sil',
+    });
+    expect(done.headers.get('Location')).toBe('/privacy/archive/arch-1?done=erased_agent');
+    expect((await callsOf('eraseAgent')).at(-1)).toEqual([
+      'admin-1',
+      'agent-1',
+      { reason: 'İlgili kişinin talebi' },
+    ]);
+    const after = await (await request('/agents/agent-1', { headers: { Cookie: admin } })).text();
+    expect(after).toContain('This person’s data was erased on');
+    expect(after).not.toContain('action="/agents/agent-1/status"');
+    expect(after).not.toContain('action="/agents/agent-1/ask"');
+    expect((await request('/agents/agent-1/erase', { headers: { Cookie: admin } })).status).toBe(
+      404,
+    );
+  });
+
+  it('refuses a request with a reason the agent is told', async () => {
+    const admin = await signIn('admin-1!aal2');
+    expect((await post('/agents/agent-1/erase/refuse', admin, { reason: 'hayır' })).status).toBe(
+      422,
+    );
+    const refused = await post('/agents/agent-1/erase/refuse', admin, {
+      reason: 'Bekleyen ödemeniz gönderildikten sonra yeniden başvurun.',
+    });
+    expect(refused.headers.get('Location')).toBe('/privacy?done=erasure_refused#requests');
+    expect((await callsOf('refuseErasure')).at(-1)).toEqual([
+      'admin-1',
+      'pr-5',
+      'Bekleyen ödemeniz gönderildikten sonra yeniden başvurun.',
+    ]);
+  });
+
+  it('keeps the archive to admins and never shows content on a page', async () => {
+    const support = await signIn('support-1!aal2');
+    const admin = await signIn('admin-1!aal2');
+    for (const path of ['/privacy/archive', '/privacy/archive/arch-1']) {
+      expect((await request(path, { headers: { Cookie: support } })).status, path).toBe(403);
+      expect((await request(path)).status, path).toBe(302);
+    }
+    expect(
+      (await post('/privacy/archive/arch-1/download', support, { reason: 'Mahkeme yazısı 2027/1' }))
+        .status,
+    ).toBe(403);
+    const list = await (await request('/privacy/archive', { headers: { Cookie: admin } })).text();
+    expect(list).toContain('href="/privacy/archive/arch-1"');
+    expect(list).toContain('Destroyed');
+    expect(list).not.toContain('Ali Veli');
+    const detail = await (
+      await request('/privacy/archive/arch-1', { headers: { Cookie: admin } })
+    ).text();
+    expect(detail).toContain('Nobody has opened this record.');
+    expect(detail).not.toContain('Ali Veli');
+    expect(detail).not.toContain('10000000146');
+    expect(await callsOf('openArchive')).toEqual([]);
+    expect((await request('/privacy/archive/nope', { headers: { Cookie: admin } })).status).toBe(
+      404,
+    );
+  });
+
+  it('downloads a record as plain text only with a reason and a fresh second factor', async () => {
+    const old = await signIn('admin-1!old');
+    const admin = await signIn('admin-1!aal2');
+    const reason = 'İzmir 3. Asliye Hukuk 2027/123 sayılı yazı';
+    expect(
+      (await post('/privacy/archive/arch-1/download', old, { reason })).headers.get('Location'),
+    ).toContain('/signin?second_factor=1');
+    expect(await callsOf('openArchive')).toEqual([]);
+    expect(
+      (await post('/privacy/archive/arch-1/download', admin, { reason: 'bakmak' })).status,
+    ).toBe(422);
+    expect((await post('/privacy/archive/arch-0/download', admin, { reason })).status).toBe(422);
+    const file = await post('/privacy/archive/arch-1/download', admin, { reason });
+    expect(file.status).toBe(200);
+    expect(file.headers.get('Content-Type')).toBe('text/plain; charset=utf-8');
+    expect(file.headers.get('Content-Disposition')).toBe(
+      'attachment; filename="emanet-arsiv-arch-1.txt"',
+    );
+    expect(file.headers.get('Cache-Control')).toBe('private, no-store');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    const text = new TextDecoder().decode(bytes);
+    expect(text).toContain('Ali Veli');
+    expect(text).toContain('10000000146');
+    expect(text).toContain(reason);
+    expect(text).toContain('admin-1');
+    // One value, one line: a line break inside an address can't forge a new field.
+    expect(text).toContain('Örnek Mah. No:1 Kadıköy');
+    expect(text).not.toContain('<');
+    expect((await callsOf('openArchive')).at(-1)).toEqual(['admin-1', 'arch-1', reason]);
+    const detail = await (
+      await request('/privacy/archive/arch-1', { headers: { Cookie: admin } })
+    ).text();
+    expect(detail).toContain(reason);
+  });
+
+  it('opens a sealed file through the core and only if the archive lists it', async () => {
+    const admin = await signIn('admin-1!aal2');
+    const reason = 'Savcılık yazısı 2027/9 için';
+    await env.EVIDENCE.put('archive/arch-1/f-1', new Uint8Array([0x45, 0x25, 0x50, 0x44, 0x46]));
+    await env.EVIDENCE.put('claims/cl-1/secret', new Uint8Array([1, 2, 3]));
+    expect(
+      (await post('/privacy/archive/arch-1/file', admin, { ref: 'claims/cl-1/secret', reason }))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await post('/privacy/archive/arch-1/file', admin, {
+          ref: 'archive/arch-1/f-1',
+          reason: 'x',
+        })
+      ).status,
+    ).toBe(422);
+    const file = await post('/privacy/archive/arch-1/file', admin, {
+      ref: 'archive/arch-1/f-1',
+      reason,
+    });
+    expect(file.status).toBe(200);
+    expect(file.headers.get('Content-Disposition')).toBe(
+      'attachment; filename="emanet-arsiv-arch-1-population_record.pdf"',
+    );
+    expect(file.headers.get('Content-Type')).toBe('application/octet-stream');
+    expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([0x25, 0x50, 0x44, 0x46]);
+    expect((await callsOf('openArchiveFile')).at(-1)).toEqual([
+      'admin-1',
+      'arch-1',
+      'archive/arch-1/f-1',
+      reason,
+      5,
+    ]);
+  });
+
+  it('seals files bound for the archive, deletes the original only after, and leaves a failed one in place', async () => {
+    const { archiveDueFiles } = await import('../src/index');
+    await env.EVIDENCE.put('agents/a-1/population_record-1', new Uint8Array([1, 2, 3]), {
+      httpMetadata: { contentType: 'application/pdf' },
+    });
+    await env.EVIDENCE.put('agents/a-1/refused-2', new Uint8Array([9]));
+    await coreHooks().testArchiveDue([
+      { file_ref: 'agents/a-1/population_record-1', bucket: 'evidence', archive_id: 'arch-1' },
+      { file_ref: 'agents/a-1/refused-2', bucket: 'evidence', archive_id: 'arch-1' },
+      { file_ref: 'agents/a-1/gone-3', bucket: 'evidence', archive_id: 'arch-1' },
+    ]);
+    expect(await archiveDueFiles(env)).toBe(1);
+    expect(await env.EVIDENCE.get('agents/a-1/population_record-1')).toBeNull();
+    expect(await env.EVIDENCE.get('agents/a-1/refused-2')).not.toBeNull();
+    const [stored = ''] = await coreHooks().testArchiveStored();
+    expect(stored.startsWith('archive/arch-1/')).toBe(true);
+    const sealed = await env.EVIDENCE.get(stored);
+    expect([...new Uint8Array((await sealed?.arrayBuffer()) ?? new ArrayBuffer(0))]).toEqual([
+      0x45, 1, 2, 3,
+    ]);
+    expect((await callsOf('archiveFileStored')).at(-1)).toEqual([
+      'arch-1',
+      'agents/a-1/population_record-1',
+      'application/pdf',
+      4,
+    ]);
+    expect((await callsOf('filesErased')).at(-1)).toEqual([['agents/a-1/gone-3']]);
+  });
+});

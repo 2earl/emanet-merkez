@@ -77,6 +77,11 @@ export async function signIn(uid: string): Promise<string> {
 interface CoreTestHooks {
   testCalls(): Promise<unknown[][]>;
   testReset(): Promise<void>;
+  testArchiveDue(
+    files: { file_ref: string; bucket: 'evidence' | 'documents'; archive_id: string }[],
+  ): Promise<void>;
+  testArchiveStored(): Promise<string[]>;
+  testPayoutsPending(n: number): Promise<void>;
 }
 export const coreHooks = () => env.CORE as unknown as CoreTestHooks;
 

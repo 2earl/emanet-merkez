@@ -18,6 +18,26 @@ export const tr: Catalog = {
   ],
   monthsShort: ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'],
   messages: {
+    'Choose what to ask for, and write the agent a few words for each (5 to 300 characters).':
+      'Ne istediğinizi seçin ve her biri için görevliye birkaç kelime yazın (5-300 karakter).',
+    'Erased. The sealed record is below; the agent was told.':
+      'Silindi. Mühürlü kayıt aşağıda; görevliye bildirildi.',
+    'Payouts are waiting for this agent. Send them first, or refuse the request.':
+      'Bu görevlinin bekleyen ödemeleri var. Önce onları gönderin ya da talebi reddedin.',
+    'Refused. The agent is emailed your reason.':
+      'Reddedildi. Gerekçeniz görevliye e-postayla gider.',
+    'Sent. The agent is emailed what you asked for.':
+      'Gönderildi. İstedikleriniz görevliye e-postayla bildirilir.',
+    'This record’s time ended and its content was destroyed.':
+      'Bu kaydın süresi doldu ve içeriği yok edildi.',
+    'This request is already settled.': 'Bu talep zaten sonuçlandı.',
+    'Type SİL to confirm.': 'Onaylamak için SİL yazın.',
+    Withdrawn: 'Geri alındı',
+    'Requests to this agent are not settled yet. Accept the answers or withdraw the requests first.':
+      'Bu görevliden istenenler henüz sonuçlanmadı. Önce yanıtları kabul edin ya da talepleri geri çekin.',
+    'This agent’s data is already erased.': 'Bu görevlinin verileri zaten silindi.',
+    'This account is closed; nothing can be asked of it.':
+      'Bu hesap kapalı; kendisinden bir şey istenemez.',
     Readiness: 'Hazırlık',
     Accounting: 'Muhasebe',
     'Both e-Devlet documents must be verified as clear first.':
