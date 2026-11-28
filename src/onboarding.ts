@@ -95,7 +95,11 @@ export function registerOnboarding(app: Hono<AppEnv>, d: Deps): void {
   });
 
   const show = async (c: AppContext, message: string | null, status: 200 | 409 | 422 = 200) => {
-    const found = await core(c.env).onboarding(c.req.param('id') ?? '');
+    const id = c.req.param('id') ?? '';
+    const [found, checklist] = await Promise.all([
+      core(c.env).onboarding(id),
+      core(c.env).approvalChecklist(d.uid(c), id),
+    ]);
     if (!found.ok) return d.notFound(c);
     return c.html(
       pages.onboardingDetail(
@@ -106,6 +110,7 @@ export function registerOnboarding(app: Hono<AppEnv>, d: Deps): void {
         d.fresh(c),
         d.done(c),
         message,
+        found.value.status === 'signed' && checklist.ok ? checklist.value : null,
       ),
       status,
     );

@@ -489,6 +489,16 @@ export interface ActivationChecklist {
   items: ActivationItem[];
   ready: boolean;
 }
+export interface ApprovalItem {
+  key: 'agreement' | 'details' | 'signoffs' | 'four_eyes';
+  ok: boolean;
+  blocking: true;
+  detail?: string[];
+}
+export interface ApprovalChecklist {
+  items: ApprovalItem[];
+  ready: boolean;
+}
 export interface Readiness {
   checks: ReadinessCheck[];
   partners_ready: boolean;
@@ -818,6 +828,7 @@ export interface ControlApi {
   ): Promise<Result<null>>;
   kycChecks(agentId: string): Promise<Result<KycCheck[]>>;
   activationChecklist(agentId: string): Promise<Result<ActivationChecklist>>;
+  approvalChecklist(staffId: string, onboardingId: string): Promise<Result<ApprovalChecklist>>;
   recordVideoCall(staffId: string, agentId: string, passed: boolean): Promise<Result<null>>;
   privacySearch(staffId: string, term: string): Promise<Result<Inventory>>;
   eraseEvidence(staffId: string, evidenceId: string, reason: string): Promise<Result<null>>;

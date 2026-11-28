@@ -1,5 +1,6 @@
 import {
   ONBOARDING_STATUSES,
+  type ApprovalChecklist,
   PARTNER_KINDS,
   REQUIRED_DOCUMENTS,
   type DocumentKind,
@@ -7,6 +8,7 @@ import {
   type OnboardingRow,
   type OnboardingStatus,
 } from './core';
+import { icon } from './icons';
 import {
   KIND_LABEL,
   attr,
@@ -19,6 +21,7 @@ import {
   lira,
   moment,
   notice,
+  L,
   type Nav,
 } from './pages';
 
@@ -118,6 +121,7 @@ export function onboardingDetail(
   fresh: boolean,
   done: string | null,
   message: string | null,
+  checklist: ApprovalChecklist | null = null,
 ): string {
   const path = `/onboarding/${o.id}`;
   const d = o.details;
@@ -201,17 +205,22 @@ export function onboardingDetail(
        <label>${label} <input name="reason" required maxlength="300"></label>
        <div><button${secondary ? ' class="secondary"' : ''} type="submit">${button}</button></div>
      </form>`;
+  const blocked = checklist?.items.some((item) => item.key !== 'four_eyes' && !item.ok) ?? false;
+  const panel = checklist ? approvalPanel(checklist) : '';
   let actions = '';
   if (canChange && o.status === 'signed') {
     actions =
-      o.invited_by === staffId
-        ? '<p class="panel">You invited this company, so another admin approves it.</p>'
-        : fresh
-          ? `<form method="post" action="${path}/approve" class="actions">
+      panel +
+      (blocked
+        ? ''
+        : o.invited_by === staffId
+          ? '<p class="panel">You invited this company, so another admin approves it.</p>'
+          : fresh
+            ? `<form method="post" action="${path}/approve" class="actions">
                <button type="submit">Approve and activate</button>
              </form>
              <p class="hint">Creates the partner, active, with these details and fees. The contact is emailed.</p>`
-          : confirmFirst(path);
+            : confirmFirst(path));
     actions += `<h3>Ask for a change</h3><p class="hint">The acceptance is cleared; they correct it and accept again.</p>${reason('return', 'What needs changing', 'Send back')}`;
   }
   if (canChange && (o.status === 'in_progress' || o.status === 'signed')) {
@@ -242,4 +251,41 @@ export function onboardingDetail(
      ${prices}
      ${actions ? `<h2>Decide</h2>${actions}` : ''}`,
   );
+}
+
+const APPROVAL_TEXT: Record<string, [string, string]> = {
+  agreement: ['The company has accepted the agreement.', 'Şirket sözleşmeyi onayladı.'],
+  details: [
+    'The organization, company details and price list are in.',
+    'Kuruluş, şirket bilgileri ve fiyat listesi tamam.',
+  ],
+  signoffs: [
+    'The sign-offs on the Readiness page are recorded.',
+    'Hazırlık sayfasındaki onaylar kaydedildi.',
+  ],
+  four_eyes: [
+    'Another admin, not the one who invited the company, approves.',
+    'Şirketi davet eden değil, başka bir yönetici onaylar.',
+  ],
+};
+
+/** What is done and what is missing before this company can be approved. */
+function approvalPanel(list: ApprovalChecklist): string {
+  const rows = list.items
+    .map((item) => {
+      const [en, tr] = APPROVAL_TEXT[item.key] ?? [item.key, item.key];
+      const more =
+        item.key === 'signoffs' && !item.ok
+          ? ` <a href="/readiness">${esc(L('Open Readiness', 'Hazırlığı aç'))}</a>${
+              item.detail?.length ? `: ${esc(item.detail.join(', '))}` : ''
+            }`
+          : '';
+      return `<li class="${item.ok ? 'fact-line' : 'error'}">${icon(item.ok ? 'check' : 'alert')}<span>${esc(L(en, tr))}${more}</span></li>`;
+    })
+    .join('');
+  return `<div class="panel" translate="no"><h3>${esc(L('Before you approve', 'Onaylamadan önce'))}</h3><ul class="plain">${rows}</ul>${
+    list.items.some((item) => item.key === 'signoffs' && !item.ok)
+      ? `<p class="hint">${esc(L('While you are only testing, an owner can switch on development mode in Settings.', 'Yalnızca deneme yapıyorsanız sahip, Ayarlar’dan geliştirme modunu açabilir.'))}</p>`
+      : ''
+  }</div>`;
 }
