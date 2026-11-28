@@ -1,3 +1,4 @@
+import type { AttachmentInput } from './attachments';
 /**
  * The contract with emanet-core's `ControlApi` entrypoint (2earl/emanet-core src/index.ts), as this
  * console uses it, and with login's StaffDirectory. The core is the source of truth.
@@ -532,6 +533,8 @@ export interface TicketMessage {
   author_kind: 'requester' | 'staff' | 'note';
   body: string;
   created_at: number;
+  /** Older core versions send none. */
+  attachments?: { id: string; name: string; content_type: string; size: number }[];
 }
 
 export interface TicketThread {
@@ -1003,7 +1006,12 @@ export interface ControlApi {
     ticketId: string,
     body: string,
     note?: boolean,
+    attachments?: AttachmentInput[],
   ): Promise<Result<null>>;
+  supportAttachment(
+    ticketId: string,
+    attachmentId: string,
+  ): Promise<Result<{ file_ref: string; name: string; content_type: string }>>;
   supportAssign(staffId: string, ticketId: string, to: string | null): Promise<Result<null>>;
   supportReplies(): Promise<Result<SavedReply[]>>;
   saveSupportReply(

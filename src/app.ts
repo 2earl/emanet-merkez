@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { attachmentResponse, dropAttachments, storeAttachments } from './attachments';
 import { routePath } from 'hono/route';
 import {
   SESSION_ABSOLUTE_SECONDS,
@@ -103,6 +104,10 @@ const ERROR_TEXT: Record<string, string> = {
   invalid_hold: 'Choose what to hold.',
   invalid_message: 'Write a message of 2 to 4000 characters.',
   invalid_title: 'Give the reply a name of 2 to 60 characters, in both languages.',
+  too_many_files: 'Attach at most three files.',
+  file_too_large: 'A file is larger than 10 MB.',
+  file_type: 'Attach photos (JPEG, PNG, WebP, HEIC) or PDF files only.',
+  invalid_file: 'A file couldn’t be read. Choose it again.',
   invalid_audience: 'Choose who the reply is offered for.',
   too_many_replies: 'There are 30 saved replies already. Delete one first.',
   duplicate_case: 'The partner already has an open case on that vehicle. Reject this one.',
@@ -1612,11 +1617,35 @@ export function createApp(now: () => number) {
 
   app.get('/support/:id', (c) => showTicket(c, null));
 
+  app.get('/support/:id/files/:file', async (c) => {
+    const found = await core(c.env).supportAttachment(c.req.param('id'), c.req.param('file'));
+    if (!found.ok) return notFound(c);
+    return (await attachmentResponse(c.env.EVIDENCE, found.value)) ?? notFound(c);
+  });
+
   app.post('/support/:id/reply', async (c) => {
-    const v = await formValues(c);
+    const form = await c.req.parseBody({ all: true });
+    const v: Record<string, string> = {};
+    for (const [key, value] of Object.entries(form)) {
+      const first: unknown = Array.isArray(value) ? value[0] : value;
+      if (typeof first === 'string') v[key] = first.trim();
+    }
+    const raw: unknown = form.files;
+    const files: unknown[] = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
     const id = c.req.param('id');
-    const result = await core(c.env).supportReply(uid(c), id, v.body ?? '', v.note === '1');
-    if (!result.ok) return showTicket(c, errorText(result.error), 422);
+    const stored = await storeAttachments(c.env.EVIDENCE, files, `staff:${uid(c)}`);
+    if (!stored.ok) return showTicket(c, errorText(stored.error), 422);
+    const result = await core(c.env).supportReply(
+      uid(c),
+      id,
+      v.body ?? '',
+      v.note === '1',
+      stored.value,
+    );
+    if (!result.ok) {
+      await dropAttachments(c.env.EVIDENCE, stored.value);
+      return showTicket(c, errorText(result.error), 422);
+    }
     return c.redirect(
       `/support/${id}?done=${v.note === '1' ? 'ticket_noted' : 'ticket_replied'}`,
       303,
